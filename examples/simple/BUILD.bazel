@@ -1,0 +1,21 @@
+load("@rules_ada//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
+
+ada_library(
+    name = "math",
+    srcs = [
+        "math.adb",
+        "math.ads",
+    ],
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    deps = [":math"],
+)
+
+ada_test(
+    name = "math_test",
+    srcs = ["math_test.adb"],
+    deps = [":math"],
+)

@@ -1,0 +1,22 @@
+load("//ada:defs.bzl", "ada_shared_library", "ada_static_library")
+load(":library_binding_test_suite.bzl", "library_binding_test_suite")
+
+ada_static_library(
+    name = "static_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_shared_library(
+    name = "shared_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+library_binding_test_suite(name = "library_binding_test_suite")

@@ -1,0 +1,6 @@
+load("//ada:defs.bzl", "ada_test")
+
+ada_test(
+    name = "test_assertions",
+    srcs = ["test_assertions.adb"],
+)

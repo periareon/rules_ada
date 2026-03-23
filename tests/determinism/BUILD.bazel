@@ -1,0 +1,38 @@
+load("//ada:defs.bzl", "ada_binary", "ada_library", "ada_shared_library", "ada_static_library")
+load(":determinism_test_suite.bzl", "determinism_test_suite")
+
+ada_library(
+    name = "lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_binary(
+    name = "bin",
+    srcs = ["srcs/main.adb"],
+    tags = ["manual"],
+    deps = [":lib"],
+)
+
+ada_static_library(
+    name = "static_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_shared_library(
+    name = "shared_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+determinism_test_suite(name = "determinism_test_suite")

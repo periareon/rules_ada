@@ -1,0 +1,15 @@
+"""Standalone consumer example for rules_ada."""
+
+module(
+    name = "rules_ada_example_simple",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_ada")
+local_path_override(
+    module_name = "rules_ada",
+    path = "../..",
+)
+
+# Needed for toolchain resolution
+bazel_dep(name = "apple_support", version = "2.5.4")

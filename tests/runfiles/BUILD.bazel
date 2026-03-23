@@ -1,0 +1,8 @@
+load("//ada:defs.bzl", "ada_test")
+
+ada_test(
+    name = "test_runfiles",
+    srcs = ["test_runfiles.adb"],
+    data = ["sample.txt"],
+    deps = ["//ada/runfiles"],
+)

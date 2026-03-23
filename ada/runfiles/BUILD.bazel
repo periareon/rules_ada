@@ -1,0 +1,10 @@
+load("//ada:defs.bzl", "ada_library")
+
+ada_library(
+    name = "runfiles",
+    srcs = [
+        "runfiles.adb",
+        "runfiles.ads",
+    ],
+    visibility = ["//visibility:public"],
+)

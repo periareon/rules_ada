@@ -1,0 +1,23 @@
+load("//ada:defs.bzl", "ada_library")
+load(":exports_bodies_test_suite.bzl", "exports_bodies_test_suite")
+
+ada_library(
+    name = "exports_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    exports_bodies = True,
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "default_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+exports_bodies_test_suite(name = "exports_bodies_test_suite")
