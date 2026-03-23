@@ -1,0 +1,20 @@
+# Bazel settings for use in Github CI
+
+# Always display the flags being used
+common --announce_rc
+
+# Show errors in CI
+test --test_output=errors
+
+# Show more information about failures
+build --verbose_failures
+
+# UI for cleaner CI output
+common --color=no
+common --show_timestamps
+
+# Show all failures
+common --keep_going
+
+# Avoid gnulib tests which are highly volatile on different platforms.
+test --test_tag_filters=-gnu_autoconf_test

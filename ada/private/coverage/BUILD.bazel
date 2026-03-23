@@ -1,0 +1,19 @@
+load("@rules_rust//rust:rust_binary.bzl", "rust_binary")
+
+exports_files([
+    "Cargo.toml",
+    "Cargo.lock",
+])
+
+rust_binary(
+    name = "collect_ada_coverage",
+    srcs = ["main.rs"],
+    edition = "2021",
+    deps = [
+        "@racov//:flate2",
+        "@racov//:serde",
+        "@racov//:serde_json",
+        "@racov//:walkdir",
+    ],
+    visibility = ["//visibility:public"],
+)

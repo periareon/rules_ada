@@ -1,0 +1,94 @@
+load("@rules_rust_mdbook//:defs.bzl", "mdbook", "mdbook_server")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@stardoc//stardoc:stardoc.bzl", "stardoc")
+
+stardoc(
+    name = "ada_binary",
+    out = "src/ada_binary.md",
+    input = "//ada:ada_binary.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_binary_bzl"],
+)
+
+stardoc(
+    name = "ada_library",
+    out = "src/ada_library.md",
+    input = "//ada:ada_library.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_library_bzl"],
+)
+
+stardoc(
+    name = "ada_static_library",
+    out = "src/ada_static_library.md",
+    input = "//ada:ada_static_library.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_static_library_bzl"],
+)
+
+stardoc(
+    name = "ada_shared_library",
+    out = "src/ada_shared_library.md",
+    input = "//ada:ada_shared_library.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_shared_library_bzl"],
+)
+
+stardoc(
+    name = "ada_test",
+    out = "src/ada_test.md",
+    input = "//ada:ada_test.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_test_bzl"],
+)
+
+stardoc(
+    name = "ada_toolchain",
+    out = "src/ada_toolchain.md",
+    input = "//ada:ada_toolchain.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada:ada_toolchain_bzl"],
+)
+
+mdbook(
+    name = "book",
+    srcs = glob(["src/**/*.md"]) + [
+        ":ada_binary",
+        ":ada_library",
+        ":ada_shared_library",
+        ":ada_static_library",
+        ":ada_test",
+        ":ada_toolchain",
+    ],
+    book = "book.toml",
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+alias(
+    name = "docs",
+    actual = ":book",
+    tags = ["manual"],
+)
+
+mdbook_server(
+    name = "server",
+    book = ":book",
+    tags = ["manual"],
+)
+
+sh_binary(
+    name = "publish_book",
+    srcs = ["publish_book.sh"],
+    data = [":book"],
+    env = {"BOOK_DIR": "$(rootpath :book)"},
+    tags = ["manual"],
+)

@@ -1,0 +1,104 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//ada/private:toolchain.bzl", "current_ada_toolchain")
+
+exports_files([
+    "defs.bzl",
+    "ada_binary.bzl",
+    "ada_library.bzl",
+    "ada_shared_library.bzl",
+    "ada_static_library.bzl",
+    "ada_test.bzl",
+    "ada_toolchain.bzl",
+])
+
+toolchain_type(
+    name = "toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+current_ada_toolchain(
+    name = "current_ada_toolchain",
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = [
+        "defs.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ada_binary_bzl",
+        ":ada_library_bzl",
+        ":ada_shared_library_bzl",
+        ":ada_static_library_bzl",
+        ":ada_test_bzl",
+        ":ada_toolchain_bzl",
+    ],
+)
+
+bzl_library(
+    name = "ada_binary_bzl",
+    srcs = [
+        "ada_binary.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)
+
+bzl_library(
+    name = "ada_library_bzl",
+    srcs = [
+        "ada_library.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)
+
+bzl_library(
+    name = "ada_static_library_bzl",
+    srcs = [
+        "ada_static_library.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)
+
+bzl_library(
+    name = "ada_shared_library_bzl",
+    srcs = [
+        "ada_shared_library.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)
+
+bzl_library(
+    name = "ada_test_bzl",
+    srcs = [
+        "ada_test.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)
+
+bzl_library(
+    name = "ada_toolchain_bzl",
+    srcs = [
+        "ada_toolchain.bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ada/private:bzl_lib",
+    ],
+)

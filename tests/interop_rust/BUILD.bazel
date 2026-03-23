@@ -1,0 +1,34 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_rust//rust:defs.bzl", "rust_static_library")
+load("//ada:defs.bzl", "ada_binary", "ada_test")
+
+rust_static_library(
+    name = "rusty_math",
+    srcs = ["rusty_math.rs"],
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    deps = [":rusty_math"],
+)
+
+ada_test(
+    name = "main_test_executable",
+    srcs = ["main.adb"],
+    deps = [":rusty_math"],
+)
+
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(location main.output)"],
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+)
