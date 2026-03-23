@@ -1,0 +1,30 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("//ada:defs.bzl", "ada_binary", "ada_library")
+
+ada_library(
+    name = "greetings",
+    srcs = [
+        "greetings.adb",
+        "greetings.ads",
+    ],
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    deps = [":greetings"],
+)
+
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(execpath main.output)"],
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+)

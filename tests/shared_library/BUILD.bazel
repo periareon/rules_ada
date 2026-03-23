@@ -1,0 +1,43 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("//ada:defs.bzl", "ada_binary", "ada_shared_library")
+
+ada_shared_library(
+    name = "math_ops",
+    srcs = [
+        "math_ops.adb",
+        "math_ops.ads",
+    ],
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    linkstatic = False,
+    deps = [":math_ops"],
+)
+
+# On Windows, DLLs must be in the executable's directory or on PATH at
+# runtime. Bazel's run_binary does not set up DLL search paths, so the
+# tool process fails with STATUS_DLL_NOT_FOUND (0xC0000135). The shared
+# library itself builds correctly; only the test execution is affected.
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(execpath main.output)"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)

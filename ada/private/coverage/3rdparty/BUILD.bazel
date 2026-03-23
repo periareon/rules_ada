@@ -1,0 +1,13 @@
+load("@rules_rust//crate_universe:defs.bzl", "crates_vendor")
+
+crates_vendor(
+    name = "crates_vendor",
+    cargo_lockfile = "//ada/private/coverage:Cargo.lock",
+    manifests = ["//ada/private/coverage:Cargo.toml"],
+    mode = "remote",
+    # Short for 'rules_ada_coverage'. Keep this short to reduce
+    # the risk to bump into absolute path length issues on Windows. See:
+    # https://github.com/bazelbuild/rules_rust/issues/1120
+    repository_name = "racov",
+    tags = ["manual"],
+)
