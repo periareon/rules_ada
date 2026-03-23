@@ -1,0 +1,75 @@
+load("//ada:defs.bzl", "ada_library")
+load(":split_compilation_test_suite.bzl", "split_compilation_test_suite")
+
+ada_library(
+    name = "two_unit_lib",
+    srcs = [
+        "srcs/bar.adb",
+        "srcs/bar.ads",
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "spec_only_lib",
+    srcs = ["srcs/types.ads"],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "copts_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    copts = [
+        "-gnatwa",
+        "-O2",
+    ],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "parent_with_subunit",
+    srcs = [
+        "srcs/parent.adb",
+        "srcs/parent.ads",
+        "srcs/parent-child.adb",
+    ],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "explicit_subunit_lib",
+    srcs = [
+        "srcs/parent.adb",
+        "srcs/parent.ads",
+        "srcs/parent_oddly_named.adb",
+    ],
+    subunits = ["srcs/parent_oddly_named.adb"],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "mixed_dep_lib",
+    srcs = [
+        "srcs/bar.adb",
+        "srcs/bar.ads",
+        "srcs/types.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "downstream_lib",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+    deps = [":mixed_dep_lib"],
+)
+
+split_compilation_test_suite(name = "split_compilation_test_suite")

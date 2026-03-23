@@ -1,0 +1,46 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_rust//rust:defs.bzl", "rust_static_library")
+load("//ada:defs.bzl", "ada_binary", "ada_test")
+
+# GNAT on Windows uses MinGW (x86_64-w64-mingw32), not MSVC. The default
+# rules_rust toolchain targets x86_64-pc-windows-msvc, producing objects
+# with MSVC ABI (MSVC CRT symbols like __chkstk, ntdll imports). MinGW's
+# linker cannot resolve these. To make this work on Windows, configure the
+# Rust toolchain to use the x86_64-pc-windows-gnu target instead.
+NOT_WINDOWS = select({
+    "@platforms//os:windows": ["@platforms//:incompatible"],
+    "//conditions:default": [],
+})
+
+rust_static_library(
+    name = "rusty_math",
+    srcs = ["rusty_math.rs"],
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    target_compatible_with = NOT_WINDOWS,
+    deps = [":rusty_math"],
+)
+
+ada_test(
+    name = "main_test_executable",
+    srcs = ["main.adb"],
+    target_compatible_with = NOT_WINDOWS,
+    deps = [":rusty_math"],
+)
+
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(execpath main.output)"],
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+)

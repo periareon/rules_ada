@@ -1,0 +1,50 @@
+load("//ada:defs.bzl", "ada_binary", "ada_library")
+load(":incrementality_test_suite.bzl", "incrementality_test_suite")
+
+ada_library(
+    name = "foo_default",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "foo_exports_bodies",
+    srcs = [
+        "srcs/foo.adb",
+        "srcs/foo.ads",
+    ],
+    exports_bodies = True,
+    tags = ["manual"],
+)
+
+ada_library(
+    name = "bar_using_default",
+    srcs = [
+        "srcs/bar.adb",
+        "srcs/bar.ads",
+    ],
+    tags = ["manual"],
+    deps = [":foo_default"],
+)
+
+ada_library(
+    name = "bar_using_exports",
+    srcs = [
+        "srcs/bar.adb",
+        "srcs/bar.ads",
+    ],
+    tags = ["manual"],
+    deps = [":foo_exports_bodies"],
+)
+
+ada_binary(
+    name = "main_using_default",
+    srcs = ["srcs/main.adb"],
+    tags = ["manual"],
+    deps = [":foo_default"],
+)
+
+incrementality_test_suite(name = "incrementality_test_suite")
