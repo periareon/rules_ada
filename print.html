@@ -217,7 +217,7 @@ ada_test(
 <pre>
 load("@rules_ada//ada:ada_binary.bzl", "ada_binary")
 
-ada_binary(<a href="ada_binary.html#ada_binary-name">name</a>, <a href="ada_binary.html#ada_binary-deps">deps</a>, <a href="ada_binary.html#ada_binary-srcs">srcs</a>, <a href="ada_binary.html#ada_binary-data">data</a>, <a href="ada_binary.html#ada_binary-copts">copts</a>, <a href="ada_binary.html#ada_binary-linkopts">linkopts</a>, <a href="ada_binary.html#ada_binary-linkstatic">linkstatic</a>, <a href="ada_binary.html#ada_binary-main">main</a>)
+ada_binary(<a href="ada_binary.html#ada_binary-name">name</a>, <a href="ada_binary.html#ada_binary-deps">deps</a>, <a href="ada_binary.html#ada_binary-srcs">srcs</a>, <a href="ada_binary.html#ada_binary-data">data</a>, <a href="ada_binary.html#ada_binary-compile_data">compile_data</a>, <a href="ada_binary.html#ada_binary-copts">copts</a>, <a href="ada_binary.html#ada_binary-linkopts">linkopts</a>, <a href="ada_binary.html#ada_binary-linkstatic">linkstatic</a>, <a href="ada_binary.html#ada_binary-main">main</a>)
 </pre>
 <p>Compiles Ada source files, binds them, and links into an executable.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -226,6 +226,7 @@ ada_binary(<a href="ada_binary.html#ada_binary-name">name</a>, <a href="ada_bina
 <tr><td style="text-align: left"><a id="ada_binary-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_binary-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
@@ -242,7 +243,7 @@ ada_binary(<a href="ada_binary.html#ada_binary-name">name</a>, <a href="ada_bina
 <pre>
 load("@rules_ada//ada:ada_library.bzl", "ada_library")
 
-ada_library(<a href="ada_library.html#ada_library-name">name</a>, <a href="ada_library.html#ada_library-deps">deps</a>, <a href="ada_library.html#ada_library-srcs">srcs</a>, <a href="ada_library.html#ada_library-data">data</a>, <a href="ada_library.html#ada_library-copts">copts</a>, <a href="ada_library.html#ada_library-linkopts">linkopts</a>)
+ada_library(<a href="ada_library.html#ada_library-name">name</a>, <a href="ada_library.html#ada_library-deps">deps</a>, <a href="ada_library.html#ada_library-srcs">srcs</a>, <a href="ada_library.html#ada_library-data">data</a>, <a href="ada_library.html#ada_library-compile_data">compile_data</a>, <a href="ada_library.html#ada_library-copts">copts</a>, <a href="ada_library.html#ada_library-linkopts">linkopts</a>)
 </pre>
 <p>Compiles Ada source files into a library. This is the primary rule for Ada-to-Ada dependencies and cross-language interop via CcInfo. Use <code>ada_static_library</code> or <code>ada_shared_library</code> when you need to produce a specific artifact type for external consumption.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -251,6 +252,7 @@ ada_library(<a href="ada_library.html#ada_library-name">name</a>, <a href="ada_l
 <tr><td style="text-align: left"><a id="ada_library-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_library-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
@@ -265,7 +267,7 @@ ada_library(<a href="ada_library.html#ada_library-name">name</a>, <a href="ada_l
 <pre>
 load("@rules_ada//ada:ada_shared_library.bzl", "ada_shared_library")
 
-ada_shared_library(<a href="ada_shared_library.html#ada_shared_library-name">name</a>, <a href="ada_shared_library.html#ada_shared_library-deps">deps</a>, <a href="ada_shared_library.html#ada_shared_library-srcs">srcs</a>, <a href="ada_shared_library.html#ada_shared_library-data">data</a>, <a href="ada_shared_library.html#ada_shared_library-copts">copts</a>, <a href="ada_shared_library.html#ada_shared_library-linkopts">linkopts</a>)
+ada_shared_library(<a href="ada_shared_library.html#ada_shared_library-name">name</a>, <a href="ada_shared_library.html#ada_shared_library-deps">deps</a>, <a href="ada_shared_library.html#ada_shared_library-srcs">srcs</a>, <a href="ada_shared_library.html#ada_shared_library-data">data</a>, <a href="ada_shared_library.html#ada_shared_library-compile_data">compile_data</a>, <a href="ada_shared_library.html#ada_shared_library-copts">copts</a>, <a href="ada_shared_library.html#ada_shared_library-linkopts">linkopts</a>)
 </pre>
 <p>Compiles Ada source files into a shared (dynamic) library.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -274,6 +276,7 @@ ada_shared_library(<a href="ada_shared_library.html#ada_shared_library-name">nam
 <tr><td style="text-align: left"><a id="ada_shared_library-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_shared_library-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_shared_library-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_shared_library-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_shared_library-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_shared_library-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
@@ -288,7 +291,7 @@ ada_shared_library(<a href="ada_shared_library.html#ada_shared_library-name">nam
 <pre>
 load("@rules_ada//ada:ada_static_library.bzl", "ada_static_library")
 
-ada_static_library(<a href="ada_static_library.html#ada_static_library-name">name</a>, <a href="ada_static_library.html#ada_static_library-deps">deps</a>, <a href="ada_static_library.html#ada_static_library-srcs">srcs</a>, <a href="ada_static_library.html#ada_static_library-data">data</a>, <a href="ada_static_library.html#ada_static_library-copts">copts</a>, <a href="ada_static_library.html#ada_static_library-linkopts">linkopts</a>)
+ada_static_library(<a href="ada_static_library.html#ada_static_library-name">name</a>, <a href="ada_static_library.html#ada_static_library-deps">deps</a>, <a href="ada_static_library.html#ada_static_library-srcs">srcs</a>, <a href="ada_static_library.html#ada_static_library-data">data</a>, <a href="ada_static_library.html#ada_static_library-compile_data">compile_data</a>, <a href="ada_static_library.html#ada_static_library-copts">copts</a>, <a href="ada_static_library.html#ada_static_library-linkopts">linkopts</a>)
 </pre>
 <p>Compiles Ada source files into a static archive (.a) for external consumption.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -297,6 +300,7 @@ ada_static_library(<a href="ada_static_library.html#ada_static_library-name">nam
 <tr><td style="text-align: left"><a id="ada_static_library-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_static_library-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_static_library-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_static_library-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_static_library-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_static_library-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
@@ -311,7 +315,7 @@ ada_static_library(<a href="ada_static_library.html#ada_static_library-name">nam
 <pre>
 load("@rules_ada//ada:ada_test.bzl", "ada_test")
 
-ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#ada_test-deps">deps</a>, <a href="ada_test.html#ada_test-srcs">srcs</a>, <a href="ada_test.html#ada_test-data">data</a>, <a href="ada_test.html#ada_test-copts">copts</a>, <a href="ada_test.html#ada_test-env">env</a>, <a href="ada_test.html#ada_test-env_inherit">env_inherit</a>, <a href="ada_test.html#ada_test-linkopts">linkopts</a>, <a href="ada_test.html#ada_test-linkstatic">linkstatic</a>, <a href="ada_test.html#ada_test-main">main</a>)
+ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#ada_test-deps">deps</a>, <a href="ada_test.html#ada_test-srcs">srcs</a>, <a href="ada_test.html#ada_test-data">data</a>, <a href="ada_test.html#ada_test-compile_data">compile_data</a>, <a href="ada_test.html#ada_test-copts">copts</a>, <a href="ada_test.html#ada_test-env">env</a>, <a href="ada_test.html#ada_test-env_inherit">env_inherit</a>, <a href="ada_test.html#ada_test-linkopts">linkopts</a>, <a href="ada_test.html#ada_test-linkstatic">linkstatic</a>, <a href="ada_test.html#ada_test-main">main</a>)
 </pre>
 <p>Compiles Ada source files, binds them, and links into a test executable. Run with <code>bazel test</code>.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -320,6 +324,7 @@ ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#
 <tr><td style="text-align: left"><a id="ada_test-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_test-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-env"></a>env</td><td style="text-align: left">Environment variables to set when running the test.</td><td style="text-align: left"><a href="https://bazel.build/rules/lib/core/dict">Dictionary: String -&gt; String</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>{}</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-env_inherit"></a>env_inherit</td><td style="text-align: left">Environment variables to inherit from the host environment.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
@@ -338,10 +343,11 @@ ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#
 <pre>
 load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
-ada_toolchain(<a href="ada_toolchain.html#ada_toolchain-name">name</a>, <a href="ada_toolchain.html#ada_toolchain-all_files">all_files</a>, <a href="ada_toolchain.html#ada_toolchain-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#ada_toolchain-binder">binder</a>, <a href="ada_toolchain.html#ada_toolchain-compile_flags">compile_flags</a>, <a href="ada_toolchain.html#ada_toolchain-compiler">compiler</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_id">compiler_id</a>, <a href="ada_toolchain.html#ada_toolchain-link_flags">link_flags</a>)
+ada_toolchain(<a href="ada_toolchain.html#ada_toolchain-name">name</a>, <a href="ada_toolchain.html#ada_toolchain-ada_std">ada_std</a>, <a href="ada_toolchain.html#ada_toolchain-ar">ar</a>, <a href="ada_toolchain.html#ada_toolchain-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#ada_toolchain-binder">binder</a>, <a href="ada_toolchain.html#ada_toolchain-compile_flags">compile_flags</a>, <a href="ada_toolchain.html#ada_toolchain-compiler">compiler</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_id">compiler_id</a>,
+              <a href="ada_toolchain.html#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#ada_toolchain-gcov">gcov</a>, <a href="ada_toolchain.html#ada_toolchain-link_flags">link_flags</a>)
 </pre>
 <p>Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
-and compilation/linking flags.</p>
+archiver (ar), and compilation/linking flags.</p>
 <p>Example:</p>
 <pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
@@ -349,22 +355,26 @@ ada_toolchain(
     name = "gnat_toolchain",
     compiler = "@gnat//:bin/gcc",
     binder = "@gnat//:bin/gnatbind",
+    ar = "@gnat//:bin/ar",
+    ada_std = "@gnat//:ada_std",
+    compiler_lib = "@gnat//:compiler_lib",
+    gcov = "@gnat//:bin/gcov",
     compile_flags = ["-O2"],
     link_flags = ["-lgnat"],
 )
 </code></pre>
-<p>Register the resulting toolchain with:</p>
-<pre><code class="language-python">register_toolchains("//:gnat_toolchain")
-</code></pre>
 <p><strong>ATTRIBUTES</strong></p>
 <div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
 <tr><td style="text-align: left"><a id="ada_toolchain-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-all_files"></a>all_files</td><td style="text-align: left">All toolchain files needed as action inputs (runtime libraries, support programs, etc.).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-ada_std"></a>ada_std</td><td style="text-align: left">The Ada standard library (adalib and adainclude).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-ar"></a>ar</td><td style="text-align: left">The archiver executable (ar or gcc-ar).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-bind_flags"></a>bind_flags</td><td style="text-align: left">Additional flags for gnatbind.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-binder"></a>binder</td><td style="text-align: left">The gnatbind executable for elaboration ordering and consistency checking.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compile_flags"></a>compile_flags</td><td style="text-align: left">Additional compiler flags for Ada compilation.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler"></a>compiler</td><td style="text-align: left">The Ada compiler executable (gcc with GNAT support).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_id"></a>compiler_id</td><td style="text-align: left">Identifier for the Ada compiler. Currently only 'gnat' is supported.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>"gnat"</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-compiler_lib"></a>compiler_lib</td><td style="text-align: left">GCC support files (backends, shared libs, runtime libs like libgcc.a, libatomic.a).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-gcov"></a>gcov</td><td style="text-align: left">The gcov executable for coverage support.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Additional linker flags (e.g., -lgnat, -lgnarl).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
 </div>

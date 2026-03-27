@@ -166,7 +166,7 @@
 <pre>
 load("@rules_ada//ada:ada_library.bzl", "ada_library")
 
-ada_library(<a href="#ada_library-name">name</a>, <a href="#ada_library-deps">deps</a>, <a href="#ada_library-srcs">srcs</a>, <a href="#ada_library-data">data</a>, <a href="#ada_library-copts">copts</a>, <a href="#ada_library-linkopts">linkopts</a>)
+ada_library(<a href="#ada_library-name">name</a>, <a href="#ada_library-deps">deps</a>, <a href="#ada_library-srcs">srcs</a>, <a href="#ada_library-data">data</a>, <a href="#ada_library-compile_data">compile_data</a>, <a href="#ada_library-copts">copts</a>, <a href="#ada_library-linkopts">linkopts</a>)
 </pre>
 <p>Compiles Ada source files into a library. This is the primary rule for Ada-to-Ada dependencies and cross-language interop via CcInfo. Use <code>ada_static_library</code> or <code>ada_shared_library</code> when you need to produce a specific artifact type for external consumption.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -175,6 +175,7 @@ ada_library(<a href="#ada_library-name">name</a>, <a href="#ada_library-deps">de
 <tr><td style="text-align: left"><a id="ada_library-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (AdaInfo) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_library-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., -gnatwa, -O2).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_library-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
