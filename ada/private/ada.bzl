@@ -386,6 +386,7 @@ def _build_executable(ctx, is_test):
         all_ali_files = all_ali,
         transitive_sources = all_sources,
         name = ctx.label.name,
+        label_package = ctx.label.package,
     )
 
     all_objects = result.objects + [binder_obj]

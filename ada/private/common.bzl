@@ -132,7 +132,8 @@ def _bind(
         main_ali,
         all_ali_files,
         transitive_sources,
-        name):
+        name,
+        label_package = ""):
     """Run gnatbind to generate elaboration code, then compile the binder output.
 
     The binder reads all ALI files to verify consistency across compilation
@@ -147,6 +148,9 @@ def _bind(
         all_ali_files: list[File] of all transitive .ali files.
         transitive_sources: list[File] of all transitive .ads source files.
         name: str rule name for output naming.
+        label_package: str label package path, used to make binder output
+            filenames unique in the exec root CWD (prevents races on Windows
+            where actions are not sandboxed).
 
     Returns:
         File: the compiled binder object file.
@@ -156,7 +160,11 @@ def _bind(
     process_wrapper = ada_toolchain.process_wrapper
 
     safe_name = name.replace("-", "_").replace(".", "_")
-    binder_basename = "b_" + safe_name
+    if label_package:
+        safe_pkg = label_package.replace("/", "_").replace("-", "_").replace(".", "_")
+        binder_basename = "b_" + safe_pkg + "_" + safe_name
+    else:
+        binder_basename = "b_" + safe_name
     binder_adb = actions.declare_file(paths.join("_bind", name, binder_basename + ".adb"))
     binder_ads = actions.declare_file(paths.join("_bind", name, binder_basename + ".ads"))
     binder_obj = actions.declare_file(paths.join("_bind", name, binder_basename + ".o"))
@@ -285,6 +293,21 @@ def _collect_cc_link_inputs(linking_contexts, prefer_static = True):
             extra_inputs.extend(linker_input.additional_inputs)
     return lib_files, link_flags, extra_inputs
 
+def _msvc_to_mingw_flags(link_flags):
+    """Convert MSVC-style .lib references to MinGW -l flags.
+
+    When C/C++ or Rust dependencies provide Windows system library names
+    in MSVC format (e.g. advapi32.lib), MinGW gcc needs them as -l flags
+    (e.g. -ladvapi32). Only converts bare names without path separators.
+    """
+    result = []
+    for flag in link_flags:
+        if flag.endswith(".lib") and "/" not in flag and "\\" not in flag:
+            result.append("-l" + flag.removesuffix(".lib"))
+        else:
+            result.append(flag)
+    return result
+
 def _archive(
         *,
         actions,
@@ -314,12 +337,17 @@ def _archive(
     args.add(archive)
     args.add_all(objects)
 
+    if _is_windows(ada_toolchain):
+        path_env = ar.dirname
+    else:
+        path_env = ar.dirname + ":/usr/bin:/bin"
+
     actions.run(
         executable = ar,
         arguments = [args],
         inputs = depset(objects, transitive = [ada_toolchain.compiler_lib]),
         outputs = [archive],
-        env = {"PATH": ar.dirname + ":/usr/bin:/bin"},
+        env = {"PATH": path_env},
         mnemonic = "AdaArchive",
         progress_message = "Archiving Ada library %s" % name,
     )
@@ -328,6 +356,10 @@ def _archive(
 def _is_macos(ada_toolchain):
     """Detect macOS from the toolchain's compiler path."""
     return "darwin" in ada_toolchain.compiler.path
+
+def _is_windows(ada_toolchain):
+    """Detect Windows from the toolchain's compiler path."""
+    return ada_toolchain.compiler.path.endswith(".exe")
 
 def _link_shared(
         *,
@@ -339,9 +371,11 @@ def _link_shared(
         name):
     """Create a shared library using GNAT gcc -shared.
 
-    The static GNAT runtime (libgnat.a, libgnarl.a) is intentionally
-    excluded because it is not built with -fPIC on Linux. Runtime symbols
-    are resolved at load time from the executable that links the .so.
+    On Linux, the static GNAT runtime (libgnat.a, libgnarl.a) is excluded
+    because it is not built with -fPIC. Runtime symbols are resolved at
+    load time from the executable. On macOS, the same applies with
+    -Wl,-undefined,dynamic_lookup. On Windows, PIC is not required, so
+    the GNAT runtime is linked directly into the DLL.
 
     Args:
         actions: ctx.actions object.
@@ -349,21 +383,28 @@ def _link_shared(
         objects: list[File] of .o files.
         dep_linking_contexts: list[CcLinkingContext] from dependencies.
         user_link_flags: list[str] user linker flags.
-        name: str library name (output will be lib{name}.so).
+        name: str library name (output will be lib{name}.so, .dylib, or .dll).
 
     Returns:
         File: the shared library.
     """
-    shared_lib = actions.declare_file("lib" + name + ".so")
+    if _is_windows(ada_toolchain):
+        shared_lib = actions.declare_file(name + ".dll")
+    else:
+        shared_lib = actions.declare_file("lib" + name + ".so")
     compiler = ada_toolchain.compiler
 
     dep_libs, dep_flags, dep_extra_inputs = _collect_cc_link_inputs(dep_linking_contexts, prefer_static = False)
+    if _is_windows(ada_toolchain):
+        dep_flags = _msvc_to_mingw_flags(dep_flags)
 
     all_link_flags = list(user_link_flags)
 
     if _is_macos(ada_toolchain):
         all_link_flags.append("-Wl,-undefined,dynamic_lookup")
         all_link_flags.append("-Wl,-install_name,@rpath/lib" + name + ".so")
+    elif _is_windows(ada_toolchain):
+        all_link_flags.extend(_resolve_link_flags(ada_toolchain))
     else:
         all_link_flags.append("-Wl,-soname,lib" + name + ".so")
 
@@ -417,13 +458,18 @@ def _link_executable(
     Returns:
         File: the linked executable.
     """
-    executable = actions.declare_file(name)
+    if _is_windows(ada_toolchain):
+        executable = actions.declare_file(name + ".exe")
+    else:
+        executable = actions.declare_file(name)
     compiler = ada_toolchain.compiler
 
     dep_libs, dep_flags, dep_extra_inputs = _collect_cc_link_inputs(
         dep_linking_contexts,
         prefer_static = link_deps_statically,
     )
+    if _is_windows(ada_toolchain):
+        dep_flags = _msvc_to_mingw_flags(dep_flags)
 
     all_link_flags = list(user_link_flags) + _resolve_link_flags(ada_toolchain)
     if coverage_enabled:
@@ -431,11 +477,11 @@ def _link_executable(
         all_link_flags.extend(cc_coverage_link_flags)
 
     all_dep_files = dep_libs + dep_extra_inputs
-    has_dynamic_deps = any([f.extension in ("so", "dylib") for f in all_dep_files])
+    has_dynamic_deps = any([f.extension in ("so", "dylib", "dll") for f in all_dep_files])
     if has_dynamic_deps:
         if _is_macos(ada_toolchain):
             all_link_flags.append("-Wl,-rpath,@loader_path")
-        else:
+        elif not _is_windows(ada_toolchain):
             all_link_flags.append("-Wl,-rpath,$ORIGIN")
 
     args = actions.args()
