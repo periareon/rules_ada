@@ -237,8 +237,6 @@ def _ada_shared_library_impl(ctx):
             objects = result.objects,
             dep_linking_contexts = dep_info.linking_contexts,
             user_link_flags = ctx.attr.linkopts,
-            coverage_enabled = coverage_enabled,
-            cc_coverage_link_flags = _cc_coverage_link_flags(ctx) if coverage_enabled else [],
             name = ctx.label.name,
         )
 

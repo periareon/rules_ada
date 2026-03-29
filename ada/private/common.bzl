@@ -336,10 +336,12 @@ def _link_shared(
         objects,
         dep_linking_contexts = [],
         user_link_flags = [],
-        coverage_enabled = False,
-        cc_coverage_link_flags = [],
         name):
     """Create a shared library using GNAT gcc -shared.
+
+    The static GNAT runtime (libgnat.a, libgnarl.a) is intentionally
+    excluded because it is not built with -fPIC on Linux. Runtime symbols
+    are resolved at load time from the executable that links the .so.
 
     Args:
         actions: ctx.actions object.
@@ -347,9 +349,6 @@ def _link_shared(
         objects: list[File] of .o files.
         dep_linking_contexts: list[CcLinkingContext] from dependencies.
         user_link_flags: list[str] user linker flags.
-        coverage_enabled: bool whether to add gcov link flags.
-        cc_coverage_link_flags: list[str] extra coverage link flags from
-            the CC toolchain (e.g., LLVM profile runtime on macOS).
         name: str library name (output will be lib{name}.so).
 
     Returns:
@@ -360,12 +359,10 @@ def _link_shared(
 
     dep_libs, dep_flags, dep_extra_inputs = _collect_cc_link_inputs(dep_linking_contexts, prefer_static = False)
 
-    all_link_flags = list(user_link_flags) + _resolve_link_flags(ada_toolchain)
-    if coverage_enabled:
-        all_link_flags.extend(_gcov_link_flags(ada_toolchain))
-        all_link_flags.extend(cc_coverage_link_flags)
+    all_link_flags = list(user_link_flags)
 
     if _is_macos(ada_toolchain):
+        all_link_flags.append("-Wl,-undefined,dynamic_lookup")
         all_link_flags.append("-Wl,-install_name,@rpath/lib" + name + ".so")
     else:
         all_link_flags.append("-Wl,-soname,lib" + name + ".so")

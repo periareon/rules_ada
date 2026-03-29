@@ -37,8 +37,8 @@ filegroup(
 
 ada_toolchain(
     name = "ada_toolchain",
-    compiler = "bin/gcc",
-    binder = "bin/gnatbind",
+    compiler = "{compiler}",
+    binder = "{binder}",
     ar = "{ar}",
     gcov = "{gcov}",
     ada_std = ":ada_std",
@@ -75,22 +75,35 @@ def _find_runtime_paths(repository_ctx):
     if not adalib_rel:
         fail("Could not find adalib directory in GNAT archive")
 
-    # Find ar (prefer gcc-ar, fall back to ar)
-    ar_path = "bin/ar"
-    for name in ["bin/gcc-ar", "bin/ar"]:
-        if repository_ctx.path(name).exists:
-            ar_path = name
-            break
+    def _find_tool(base, candidates = None):
+        """Find a tool binary, checking for .exe suffix on Windows."""
+        names = candidates or [base]
+        for name in names:
+            for ext in ["", ".exe"]:
+                if repository_ctx.path(name + ext).exists:
+                    return name + ext
+        return None
 
-    # Find gcov
-    gcov_path = "bin/gcov"
-    if not repository_ctx.path(gcov_path).exists:
-        gcov_path = None
+    compiler_path = _find_tool("bin/gcc")
+    if not compiler_path:
+        fail("Could not find gcc compiler in GNAT archive")
+
+    binder_path = _find_tool("bin/gnatbind")
+    if not binder_path:
+        fail("Could not find gnatbind in GNAT archive")
+
+    ar_path = _find_tool("bin/ar", ["bin/gcc-ar", "bin/ar"])
+    if not ar_path:
+        fail("Could not find ar in GNAT archive")
+
+    gcov_path = _find_tool("bin/gcov")
 
     return struct(
         adalib = adalib_rel,
         adainclude = adainclude_rel or adalib_rel.replace("adalib", "adainclude"),
         gcc_lib = gcc_lib_rel,
+        compiler = compiler_path,
+        binder = binder_path,
         ar = ar_path,
         gcov = gcov_path,
     )
@@ -118,8 +131,10 @@ def _gnat_repository_impl(repository_ctx):
     repository_ctx.file("BUILD.bazel", _GNAT_TOOLCHAIN_BUILD_TEMPLATE.format(
         adalib = rt.adalib,
         adainclude = rt.adainclude,
+        compiler = rt.compiler,
+        binder = rt.binder,
         ar = rt.ar,
-        gcov = rt.gcov or "bin/gcov",
+        gcov = rt.gcov or rt.compiler.replace("gcc", "gcov"),
         link_flags = ", ".join(link_flags),
     ))
 
