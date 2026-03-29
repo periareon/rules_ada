@@ -191,6 +191,9 @@ def _bind(
     args.add("--rename")
     args.add(binder_cwd_name + ".ads")
     args.add(binder_ads)
+    args.add("--rename")
+    args.add(binder_cwd_name + ".o")
+    args.add(binder_obj)
     args.add("--")
 
     # Command 1: gnatbind
@@ -202,14 +205,16 @@ def _bind(
     args.add(binder_cwd_name + ".adb")
     args.add(main_ali)
 
-    # Command 2: compile the binder output
+    # Command 2: compile the binder output.
+    # GNAT requires the object filename to match the compilation unit name,
+    # so we output to the CWD-relative name and let process_wrapper rename.
     args.add("++")
     args.add(compiler)
     args.add("-c")
     args.add("-I.")
     args.add(binder_cwd_name + ".adb")
     args.add("-o")
-    args.add(binder_obj)
+    args.add(binder_cwd_name + ".o")
 
     actions.run(
         executable = process_wrapper,
