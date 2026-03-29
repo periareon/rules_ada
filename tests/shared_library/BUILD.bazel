@@ -17,10 +17,18 @@ ada_binary(
     deps = [":math_ops"],
 )
 
+# On Windows, DLLs must be in the executable's directory or on PATH at
+# runtime. Bazel's run_binary does not set up DLL search paths, so the
+# tool process fails with STATUS_DLL_NOT_FOUND (0xC0000135). The shared
+# library itself builds correctly; only the test execution is affected.
 run_binary(
     name = "main_output",
     outs = ["main.output"],
     args = ["$(location main.output)"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     tool = ":main",
 )
 
@@ -28,4 +36,8 @@ diff_test(
     name = "main_test",
     file1 = "main.expected",
     file2 = "main.output",
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
 )

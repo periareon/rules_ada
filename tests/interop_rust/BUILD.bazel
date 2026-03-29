@@ -14,9 +14,18 @@ ada_binary(
     deps = [":rusty_math"],
 )
 
+# GNAT on Windows uses MinGW (x86_64-w64-mingw32), not MSVC. The default
+# rules_rust toolchain targets x86_64-pc-windows-msvc, producing objects
+# with MSVC ABI (MSVC CRT symbols like __chkstk, ntdll imports). MinGW's
+# linker cannot resolve these. To make this work on Windows, configure the
+# Rust toolchain to use the x86_64-pc-windows-gnu target instead.
 ada_test(
     name = "main_test_executable",
     srcs = ["main.adb"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [":rusty_math"],
 )
 

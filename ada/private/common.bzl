@@ -169,6 +169,13 @@ def _bind(
     binder_ads = actions.declare_file(paths.join("_bind", name, binder_basename + ".ads"))
     binder_obj = actions.declare_file(paths.join("_bind", name, binder_basename + ".o"))
 
+    # The CWD filename must be unique across ALL concurrent actions in the
+    # exec root. On Windows (no sandboxing), the same target can be built
+    # in multiple configurations simultaneously (e.g., fastbuild + opt-exec).
+    # Include a hash of the output path to disambiguate.
+    cwd_hash = "%x" % (abs(hash(binder_adb.path)) % 0xFFFFFF)
+    binder_cwd_name = binder_basename + "_" + cwd_hash
+
     search_dirs = {}
     for ali in all_ali_files:
         search_dirs[ali.dirname] = True
@@ -179,10 +186,10 @@ def _bind(
     # exec root (CWD) with a flat output name and rename afterward.
     args = actions.args()
     args.add("--rename")
-    args.add(binder_basename + ".adb")
+    args.add(binder_cwd_name + ".adb")
     args.add(binder_adb)
     args.add("--rename")
-    args.add(binder_basename + ".ads")
+    args.add(binder_cwd_name + ".ads")
     args.add(binder_ads)
     args.add("--")
 
@@ -192,7 +199,7 @@ def _bind(
     for search_dir in sorted(search_dirs.keys()):
         args.add("-I" + search_dir)
     args.add("-o")
-    args.add(binder_basename + ".adb")
+    args.add(binder_cwd_name + ".adb")
     args.add(main_ali)
 
     # Command 2: compile the binder output
@@ -200,7 +207,7 @@ def _bind(
     args.add(compiler)
     args.add("-c")
     args.add("-I.")
-    args.add(binder_basename + ".adb")
+    args.add(binder_cwd_name + ".adb")
     args.add("-o")
     args.add(binder_obj)
 
