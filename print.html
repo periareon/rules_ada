@@ -157,24 +157,28 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="rules_ada"><a class="header" href="#rules_ada">rules_ada</a></h1>
-<p>Bazel rules for building <a href="https://ada-lang.io/">Ada</a> programs using the <a href="https://gcc.gnu.org/wiki/GNAT">GNAT</a> compiler.</p>
-<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<p>Bazel rules for building <a href="https://ada-lang.io/">Ada</a> with <a href="https://gcc.gnu.org/wiki/GNAT">GNAT</a>.</p>
+<h2 id="install"><a class="header" href="#install">Install</a></h2>
 <pre><code class="language-python">bazel_dep(name = "rules_ada", version = "{version}")
 </code></pre>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p><code>rules_ada</code> provides Bazel rules for compiling Ada source files (<code>.ads</code> specs and <code>.adb</code> bodies)
-into libraries, shared libraries, binaries, and test executables. It integrates with the GNAT
-toolchain (the GCC-based Ada compiler) and Bazel's C/C++ toolchain infrastructure via <code>rules_cc</code>.</p>
-<h3 id="features"><a class="header" href="#features">Features</a></h3>
+<h2 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h2>
+<ol>
+<li>Add <code>rules_ada</code> to <code>MODULE.bazel</code>.</li>
+<li>Define Ada targets with rules from <code>//ada:defs.bzl</code>.</li>
+<li>Build or test with Bazel:</li>
+</ol>
+<pre><code class="language-bash">bazel build //:your_target
+bazel test //:your_test
+</code></pre>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
 <ul>
-<li>Compile Ada source files with full dependency tracking</li>
-<li>Static and shared library support</li>
-<li>Binary and test executable targets</li>
-<li>Code coverage via <code>bazel coverage</code></li>
-<li>Interoperability with C, C++, and Rust targets through <code>CcInfo</code></li>
-<li>Automatic GNAT toolchain detection and registration</li>
+<li>Ada libraries, binaries, and tests</li>
+<li>Static and shared library outputs</li>
+<li>Coverage support via <code>bazel coverage</code></li>
+<li>Interop with C/C++/Rust via <code>CcInfo</code></li>
+<li>GNAT toolchain registration support</li>
 </ul>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
 <pre><code class="language-python">load("//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
 
 ada_library(
@@ -197,14 +201,16 @@ ada_test(
     deps = [":math_utils"],
 )
 </code></pre>
+<h2 id="rule-reference"><a class="header" href="#rule-reference">Rule reference</a></h2>
+<p>See <a href="./rules.html">Rules</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="rules"><a class="header" href="#rules">Rules</a></h1>
 <ul>
-<li><a href="./ada_binary.html#ada_binary">ada_binary</a></li>
-<li><a href="./ada_library.html#ada_library">ada_library</a></li>
-<li><a href="./ada_shared_library.html#ada_shared_library">ada_shared_library</a></li>
-<li><a href="./ada_static_library.html#ada_static_library">ada_static_library</a></li>
-<li><a href="./ada_test.html#ada_test">ada_test</a></li>
-<li><a href="./ada_toolchain.html#ada_toolchain">ada_toolchain</a></li>
+<li><a href="./ada_binary.html">ada_binary</a></li>
+<li><a href="./ada_library.html">ada_library</a></li>
+<li><a href="./ada_shared_library.html">ada_shared_library</a></li>
+<li><a href="./ada_static_library.html">ada_static_library</a></li>
+<li><a href="./ada_test.html">ada_test</a></li>
+<li><a href="./ada_toolchain.html">ada_toolchain</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <p>ada_binary</p>
