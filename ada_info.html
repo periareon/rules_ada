@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>ada_static_library - rules_ada</title>
+        <title>ada_info - rules_ada</title>
 
 
         <!-- Custom HTML head -->
@@ -156,39 +156,36 @@
                 <div id="content" class="content">
                     <main>
                         <!-- Generated with Stardoc: http://skydoc.bazel.build -->
-<h1 id="ada_static_library"><a class="header" href="#ada_static_library">ada_static_library</a></h1>
-<h2 id="rules"><a class="header" href="#rules">Rules</a></h2>
+<h1 id="ada_info"><a class="header" href="#ada_info">ada_info</a></h1>
+<h2 id="providers"><a class="header" href="#providers">Providers</a></h2>
 <ul>
-<li><a href="#ada_static_library">ada_static_library</a></li>
+<li><a href="#AdaInfo">AdaInfo</a></li>
 </ul>
-<p><a id="ada_static_library"></a></p>
-<h2 id="ada_static_library-1"><a class="header" href="#ada_static_library-1">ada_static_library</a></h2>
+<p><a id="AdaInfo"></a></p>
+<h2 id="adainfo"><a class="header" href="#adainfo">AdaInfo</a></h2>
 <pre>
-load("@rules_ada//ada:ada_static_library.bzl", "ada_static_library")
+load("@rules_ada//ada:ada_info.bzl", "AdaInfo")
 
-ada_static_library(<a href="#ada_static_library-name">name</a>, <a href="#ada_static_library-deps">deps</a>, <a href="#ada_static_library-srcs">srcs</a>, <a href="#ada_static_library-data">data</a>, <a href="#ada_static_library-compile_data">compile_data</a>, <a href="#ada_static_library-copts">copts</a>, <a href="#ada_static_library-linkopts">linkopts</a>)
+AdaInfo(<a href="#AdaInfo-ali_files">ali_files</a>, <a href="#AdaInfo-cc_info">cc_info</a>, <a href="#AdaInfo-objects">objects</a>, <a href="#AdaInfo-transitive_sources">transitive_sources</a>)
 </pre>
-<p>Compiles Ada source files into a static archive (.a) for external consumption.</p>
-<p><strong>ATTRIBUTES</strong></p>
-<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
-<tr><td style="text-align: left"><a id="ada_static_library-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (<code>AdaInfo</code>) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., <code>-gnatwa</code>, <code>-O2</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_static_library-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<p>Information about Ada targets.</p>
+<p><strong>FIELDS</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="AdaInfo-ali_files"></a>ali_files</td><td style="text-align: left">depset[File]: Transitive Ada Library Information files (.ali), consumed by the binder.</td></tr>
+<tr><td style="text-align: left"><a id="AdaInfo-cc_info"></a>cc_info</td><td style="text-align: left">CcInfo: Compilation and linking context for cc_common integration.</td></tr>
+<tr><td style="text-align: left"><a id="AdaInfo-objects"></a>objects</td><td style="text-align: left">depset[File]: Compiled object files.</td></tr>
+<tr><td style="text-align: left"><a id="AdaInfo-transitive_sources"></a>transitive_sources</td><td style="text-align: left">depset[File]: Transitive Ada spec files (.ads) needed for downstream compilation.</td></tr>
 </tbody></table>
 </div>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="ada_shared_library.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="ada_binary.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="ada_test.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="ada_library.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -198,11 +195,11 @@ ada_static_library(<a href="#ada_static_library-name">name</a>, <a href="#ada_st
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="ada_shared_library.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="ada_binary.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="ada_test.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="ada_library.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
