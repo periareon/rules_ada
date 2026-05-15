@@ -404,7 +404,7 @@ ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#
 load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
 ada_toolchain(<a href="ada_toolchain.html#ada_toolchain-name">name</a>, <a href="ada_toolchain.html#ada_toolchain-ada_std">ada_std</a>, <a href="ada_toolchain.html#ada_toolchain-ar">ar</a>, <a href="ada_toolchain.html#ada_toolchain-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#ada_toolchain-binder">binder</a>, <a href="ada_toolchain.html#ada_toolchain-compile_flags">compile_flags</a>, <a href="ada_toolchain.html#ada_toolchain-compiler">compiler</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_id">compiler_id</a>,
-              <a href="ada_toolchain.html#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#ada_toolchain-gcov">gcov</a>, <a href="ada_toolchain.html#ada_toolchain-link_flags">link_flags</a>)
+              <a href="ada_toolchain.html#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#ada_toolchain-gcov">gcov</a>, <a href="ada_toolchain.html#ada_toolchain-link_flags">link_flags</a>, <a href="ada_toolchain.html#ada_toolchain-target_triple">target_triple</a>)
 </pre>
 <p>Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
 archiver (ar), and compilation/linking flags.</p>
@@ -436,6 +436,7 @@ ada_toolchain(
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_lib"></a>compiler_lib</td><td style="text-align: left">GCC support files (backends, shared libs, runtime libs like <code>libgcc.a</code>, <code>libatomic.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-gcov"></a>gcov</td><td style="text-align: left">The gcov executable for coverage support.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Additional linker flags (e.g., <code>-lgnat</code>, <code>-lgnarl</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
 </tbody></table>
 </div>
                     </main>
