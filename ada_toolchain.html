@@ -171,7 +171,12 @@ ada_toolchain(<a href="#ada_toolchain-name">name</a>, <a href="#ada_toolchain-ad
 </pre>
 <p>Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
 archiver (ar), and compilation/linking flags.</p>
-<p>Example:</p>
+<p>The toolchains shipped with <code>rules_ada</code> are created by its module extension;
+this rule is only needed to use a GNAT installation of your own.</p>
+<p><code>link_flags</code> entries that are plain relative paths (not starting with <code>-</code> or
+<code>/</code>) and <code>-L</code> directories are resolved against the toolchain repository
+root, which is taken to be the parent of the compiler's <code>bin/</code> directory.
+The GNAT runtime archives must be listed explicitly, tasking runtime first:</p>
 <pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
 ada_toolchain(
@@ -183,7 +188,12 @@ ada_toolchain(
     compiler_lib = "@gnat//:compiler_lib",
     gcov = "@gnat//:bin/gcov",
     compile_flags = ["-O2"],
-    link_flags = ["-lgnat"],
+    link_flags = [
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    ],
+    target_triple = "x86_64-pc-linux-gnu",
 )
 </code></pre>
 <p><strong>ATTRIBUTES</strong></p>
@@ -198,7 +208,7 @@ ada_toolchain(
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_id"></a>compiler_id</td><td style="text-align: left">Identifier for the Ada compiler. Currently only 'gnat' is supported.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>"gnat"</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_lib"></a>compiler_lib</td><td style="text-align: left">GCC support files (backends, shared libs, runtime libs like <code>libgcc.a</code>, <code>libatomic.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-gcov"></a>gcov</td><td style="text-align: left">The gcov executable for coverage support.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Additional linker flags (e.g., <code>-lgnat</code>, <code>-lgnarl</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Linker flags added to every executable and (on Windows) shared library link. Relative paths and <code>-L</code> directories are resolved against the toolchain repository root; list the GNAT runtime archives here (<code>libgnarl.a</code> before <code>libgnat.a</code>, then <code>libgcc.a</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
 </tbody></table>
 </div>

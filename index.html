@@ -163,7 +163,7 @@
 <h2 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h2>
 <ol>
 <li>Add <code>rules_ada</code> to <code>MODULE.bazel</code>.</li>
-<li>Define Ada targets with rules from <code>//ada:defs.bzl</code>.</li>
+<li>Define Ada targets with rules from <code>@rules_ada//ada:defs.bzl</code>.</li>
 <li>Build or test with Bazel:</li>
 </ol>
 <pre><code class="language-bash">bazel build //:your_target
@@ -175,10 +175,10 @@ bazel test //:your_test
 <li>Static and shared library outputs</li>
 <li>Coverage support via <code>bazel coverage</code></li>
 <li>Interop with C/C++/Rust via <code>CcInfo</code></li>
-<li>GNAT toolchain registration support</li>
+<li>Hermetic GNAT toolchains, registered automatically (see <a href="./toolchains.html">Toolchains</a>)</li>
 </ul>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
-<pre><code class="language-python">load("//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
+<pre><code class="language-python">load("@rules_ada//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
 
 ada_library(
     name = "math_utils",
@@ -202,13 +202,16 @@ ada_test(
 </code></pre>
 <h2 id="rule-reference"><a class="header" href="#rule-reference">Rule reference</a></h2>
 <p>See <a href="./rules.html">Rules</a>.</p>
+<h2 id="runfiles"><a class="header" href="#runfiles">Runfiles</a></h2>
+<p>Programs that need data files at runtime can locate them with the
+<a href="./runfiles.html">runfiles library</a>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="rules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="toolchains.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -219,7 +222,7 @@ ada_test(
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="rules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="toolchains.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

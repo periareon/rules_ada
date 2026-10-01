@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>ada_binary - rules_ada</title>
+        <title>Runfiles - rules_ada</title>
 
 
         <!-- Custom HTML head -->
@@ -155,43 +155,41 @@
 
                 <div id="content" class="content">
                     <main>
-                        <!-- Generated with Stardoc: http://skydoc.bazel.build -->
-<h1 id="ada_binary"><a class="header" href="#ada_binary">ada_binary</a></h1>
-<h2 id="rules"><a class="header" href="#rules">Rules</a></h2>
-<ul>
-<li><a href="#ada_binary">ada_binary</a></li>
-</ul>
-<p><a id="ada_binary"></a></p>
-<h2 id="ada_binary-1"><a class="header" href="#ada_binary-1">ada_binary</a></h2>
-<pre>
-load("@rules_ada//ada:ada_binary.bzl", "ada_binary")
+                        <h1 id="runfiles"><a class="header" href="#runfiles">Runfiles</a></h1>
+<p><code>@rules_ada//ada/runfiles</code> is an Ada implementation of Bazel's runfiles
+lookup, equivalent to the C++ and Python libraries that ship with Bazel. It
+finds the runfiles manifest or directory from the environment or from the
+program's own path and resolves <code>Rlocation</code> paths, honouring the bzlmod
+repository mapping.</p>
+<pre><code class="language-python">ada_binary(
+    name = "tool",
+    srcs = ["tool.adb"],
+    data = ["config.toml"],
+    deps = ["@rules_ada//ada/runfiles"],
+)
+</code></pre>
+<pre><code class="language-ada">with Runfiles;
 
-ada_binary(<a href="#ada_binary-name">name</a>, <a href="#ada_binary-deps">deps</a>, <a href="#ada_binary-srcs">srcs</a>, <a href="#ada_binary-data">data</a>, <a href="#ada_binary-compile_data">compile_data</a>, <a href="#ada_binary-copts">copts</a>, <a href="#ada_binary-linkopts">linkopts</a>, <a href="#ada_binary-linkstatic">linkstatic</a>, <a href="#ada_binary-main">main</a>, <a href="#ada_binary-subunits">subunits</a>)
-</pre>
-<p>Compiles Ada source files, binds them, and links into an executable.</p>
-<p><strong>ATTRIBUTES</strong></p>
-<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
-<tr><td style="text-align: left"><a id="ada_binary-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (<code>AdaInfo</code>) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., <code>-gnatwa</code>, <code>-O2</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. It is compiled even if it is not listed in <code>srcs</code>. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-</tbody></table>
-</div>
+procedure Tool is
+   R    : constant Runfiles.Context := Runfiles.Create;
+   Path : constant String :=
+     R.Rlocation ("my_module/config.toml", Source_Repo =&gt; "");
+begin
+   ...
+end Tool;
+</code></pre>
+<p>The full API and discovery rules are documented in the library's
+<a href="https://github.com/periareon/rules_ada/blob/main/ada/runfiles/README.md">README</a>.</p>
+
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="toolchains.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="ada_info.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="rules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -201,11 +199,11 @@ ada_binary(<a href="#ada_binary-name">name</a>, <a href="#ada_binary-deps">deps<
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="toolchains.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="ada_info.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="rules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

@@ -166,7 +166,8 @@
 <pre>
 load("@rules_ada//ada:ada_test.bzl", "ada_test")
 
-ada_test(<a href="#ada_test-name">name</a>, <a href="#ada_test-deps">deps</a>, <a href="#ada_test-srcs">srcs</a>, <a href="#ada_test-data">data</a>, <a href="#ada_test-compile_data">compile_data</a>, <a href="#ada_test-copts">copts</a>, <a href="#ada_test-env">env</a>, <a href="#ada_test-env_inherit">env_inherit</a>, <a href="#ada_test-linkopts">linkopts</a>, <a href="#ada_test-linkstatic">linkstatic</a>, <a href="#ada_test-main">main</a>)
+ada_test(<a href="#ada_test-name">name</a>, <a href="#ada_test-deps">deps</a>, <a href="#ada_test-srcs">srcs</a>, <a href="#ada_test-data">data</a>, <a href="#ada_test-compile_data">compile_data</a>, <a href="#ada_test-copts">copts</a>, <a href="#ada_test-env">env</a>, <a href="#ada_test-env_inherit">env_inherit</a>, <a href="#ada_test-linkopts">linkopts</a>, <a href="#ada_test-linkstatic">linkstatic</a>, <a href="#ada_test-main">main</a>,
+         <a href="#ada_test-subunits">subunits</a>)
 </pre>
 <p>Compiles Ada source files, binds them, and links into a test executable. Run with <code>bazel test</code>.</p>
 <p><strong>ATTRIBUTES</strong></p>
@@ -181,7 +182,8 @@ ada_test(<a href="#ada_test-name">name</a>, <a href="#ada_test-deps">deps</a>, <
 <tr><td style="text-align: left"><a id="ada_test-env_inherit"></a>env_inherit</td><td style="text-align: left">Environment variables to inherit from the host environment.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_test-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_test-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. It is compiled even if it is not listed in <code>srcs</code>. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_test-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
 </div>
                     </main>

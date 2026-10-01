@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>ada_binary - rules_ada</title>
+        <title>Toolchains - rules_ada</title>
 
 
         <!-- Custom HTML head -->
@@ -155,43 +155,56 @@
 
                 <div id="content" class="content">
                     <main>
-                        <!-- Generated with Stardoc: http://skydoc.bazel.build -->
-<h1 id="ada_binary"><a class="header" href="#ada_binary">ada_binary</a></h1>
-<h2 id="rules"><a class="header" href="#rules">Rules</a></h2>
-<ul>
-<li><a href="#ada_binary">ada_binary</a></li>
-</ul>
-<p><a id="ada_binary"></a></p>
-<h2 id="ada_binary-1"><a class="header" href="#ada_binary-1">ada_binary</a></h2>
-<pre>
-load("@rules_ada//ada:ada_binary.bzl", "ada_binary")
-
-ada_binary(<a href="#ada_binary-name">name</a>, <a href="#ada_binary-deps">deps</a>, <a href="#ada_binary-srcs">srcs</a>, <a href="#ada_binary-data">data</a>, <a href="#ada_binary-compile_data">compile_data</a>, <a href="#ada_binary-copts">copts</a>, <a href="#ada_binary-linkopts">linkopts</a>, <a href="#ada_binary-linkstatic">linkstatic</a>, <a href="#ada_binary-main">main</a>, <a href="#ada_binary-subunits">subunits</a>)
-</pre>
-<p>Compiles Ada source files, binds them, and links into an executable.</p>
-<p><strong>ATTRIBUTES</strong></p>
-<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
-<tr><td style="text-align: left"><a id="ada_binary-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-deps"></a>deps</td><td style="text-align: left">Dependencies. Can be Ada targets (<code>AdaInfo</code>) or C/C++ targets (CcInfo).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-srcs"></a>srcs</td><td style="text-align: left">Ada source files (.ads specs and .adb bodies).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-data"></a>data</td><td style="text-align: left">Additional files needed at runtime.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., <code>-gnatwa</code>, <code>-O2</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. It is compiled even if it is not listed in <code>srcs</code>. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+                        <h1 id="toolchains"><a class="header" href="#toolchains">Toolchains</a></h1>
+<p><code>rules_ada</code> ships with hermetic GNAT toolchains built by
+<a href="https://github.com/periareon/hermetic-gnat">hermetic-gnat</a>. The <code>ada</code> module
+extension declared in <code>@rules_ada//ada:extensions.bzl</code> downloads the archive
+for the execution platform on first use and <code>rules_ada</code> registers the resulting
+toolchains itself, so a consumer only needs the <code>bazel_dep</code>.</p>
+<h2 id="supported-platforms"><a class="header" href="#supported-platforms">Supported platforms</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Platform</th><th>Constraints</th></tr></thead><tbody>
+<tr><td>Linux x86_64</td><td><code>@platforms//os:linux</code>, <code>@platforms//cpu:x86_64</code></td></tr>
+<tr><td>Linux aarch64</td><td><code>@platforms//os:linux</code>, <code>@platforms//cpu:aarch64</code></td></tr>
+<tr><td>macOS x86_64</td><td><code>@platforms//os:macos</code>, <code>@platforms//cpu:x86_64</code></td></tr>
+<tr><td>macOS aarch64</td><td><code>@platforms//os:macos</code>, <code>@platforms//cpu:aarch64</code></td></tr>
+<tr><td>Windows x86_64</td><td><code>@platforms//os:windows</code>, <code>@platforms//cpu:x86_64</code></td></tr>
 </tbody></table>
 </div>
+<h2 id="selecting-a-gcc-version"><a class="header" href="#selecting-a-gcc-version">Selecting a GCC version</a></h2>
+<p>Every <code>rules_ada</code> release tracks exactly one hermetic-gnat release. That
+release contains one toolchain per supported GCC version; the newest is the
+default. The <code>version</code> build setting selects another one:</p>
+<pre><code class="language-bash">bazel build --@rules_ada//ada/settings:version=15.3.0 //...
+</code></pre>
+<p>The accepted values, the tracked hermetic-gnat release and the default are all
+recorded in
+<a href="https://github.com/periareon/rules_ada/blob/main/ada/private/versions.bzl"><code>ada/private/versions.bzl</code></a>.
+A <code>config_setting</code> named <code>@rules_ada//ada/settings:version_&lt;gcc version&gt;</code>
+exists for each entry and can be used in <code>select()</code>.</p>
+<h2 id="the-cc-toolchain"><a class="header" href="#the-cc-toolchain">The C/C++ toolchain</a></h2>
+<p>Linking, archiving (when the GNAT archive ships no <code>ar</code>) and interop with
+<code>cc_*</code> targets use the C/C++ toolchain registered by <code>rules_cc</code>. On macOS the
+Apple toolchain from <code>apple_support</code> must be registered before the default
+one, so add it to your own <code>MODULE.bazel</code> ahead of any <code>bazel_dep</code> on
+<code>rules_cc</code>:</p>
+<pre><code class="language-python">bazel_dep(name = "apple_support", version = "2.5.4")
+</code></pre>
+<h2 id="bringing-your-own-gnat"><a class="header" href="#bringing-your-own-gnat">Bringing your own GNAT</a></h2>
+<p>A GNAT installation that is not provided by hermetic-gnat can be wired up with
+the <a href="./ada_toolchain.html"><code>ada_toolchain</code></a> rule and a <code>toolchain()</code> declaration
+for <code>@rules_ada//ada:toolchain_type</code>. Link flags that are plain relative paths
+are resolved against the toolchain repository root, which is taken to be the
+parent directory of the compiler's <code>bin/</code> directory.</p>
+
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="ada_info.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="runfiles.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -201,11 +214,11 @@ ada_binary(<a href="#ada_binary-name">name</a>, <a href="#ada_binary-deps">deps<
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="ada_info.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="runfiles.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
