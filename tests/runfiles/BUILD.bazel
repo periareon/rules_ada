@@ -1,8 +1,85 @@
-load("//ada:defs.bzl", "ada_test")
+load("//ada:defs.bzl", "ada_library", "ada_test")
 
+# Assertion helpers shared by the tests in this package.
+ada_library(
+    name = "test_support",
+    testonly = True,
+    srcs = [
+        "test_support.adb",
+        "test_support.ads",
+    ],
+    visibility = ["//visibility:private"],
+    deps = ["//ada/runfiles"],
+)
+
+# End-to-end lookup through whatever Bazel's test runner provides.
 ada_test(
     name = "test_runfiles",
     srcs = ["test_runfiles.adb"],
     data = ["sample.txt"],
-    deps = ["//ada/runfiles"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+# The mode-specific tests below set or clear RUNFILES_MANIFEST_FILE,
+# RUNFILES_DIR and TEST_SRCDIR themselves before calling Runfiles.Create,
+# since the fixture paths are only known at run time (TEST_TMPDIR).
+
+ada_test(
+    name = "test_manifest_mode",
+    srcs = ["test_manifest_mode.adb"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+ada_test(
+    name = "test_directory_mode",
+    srcs = ["test_directory_mode.adb"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+ada_test(
+    name = "test_derived_paths",
+    srcs = ["test_derived_paths.adb"],
+    data = ["sample.txt"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+ada_test(
+    name = "test_invalid_paths",
+    srcs = ["test_invalid_paths.adb"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+ada_test(
+    name = "test_repo_mapping",
+    srcs = ["test_repo_mapping.adb"],
+    data = ["testdata/fixture_repo_mapping"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
+)
+
+ada_test(
+    name = "test_argv0_discovery",
+    srcs = ["test_argv0_discovery.adb"],
+    data = ["sample.txt"],
+    deps = [
+        ":test_support",
+        "//ada/runfiles",
+    ],
 )

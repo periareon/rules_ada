@@ -1,0 +1,24 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//:version.bzl", "VERSION")
+
+# The release workflow reads version.bzl while Bazel and the BCR read
+# MODULE.bazel; keep the two from drifting apart.
+write_file(
+    name = "version_bzl",
+    out = "version_bzl.txt",
+    content = [VERSION],
+)
+
+write_file(
+    name = "module_version",
+    out = "module_version.txt",
+    # module_version() is None outside of bzlmod; there is nothing to compare then.
+    content = [module_version() or VERSION],
+)
+
+diff_test(
+    name = "version_sync_test",
+    file1 = ":version_bzl",
+    file2 = ":module_version",
+)

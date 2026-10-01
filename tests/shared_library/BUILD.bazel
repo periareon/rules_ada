@@ -1,20 +1,13 @@
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
-load("//ada:defs.bzl", "ada_binary", "ada_shared_library")
-
-ada_shared_library(
-    name = "math_ops",
-    srcs = [
-        "math_ops.adb",
-        "math_ops.ads",
-    ],
-)
+load("//ada:defs.bzl", "ada_binary")
+load(":shared_library_test_suite.bzl", "shared_library_test_suite")
 
 ada_binary(
     name = "main",
     srcs = ["main.adb"],
     linkstatic = False,
-    deps = [":math_ops"],
+    deps = ["//tests/shared_library/lib:math_ops"],
 )
 
 # On Windows, DLLs must be in the executable's directory or on PATH at
@@ -41,3 +34,5 @@ diff_test(
         "//conditions:default": [],
     }),
 )
+
+shared_library_test_suite(name = "shared_library_test_suite")

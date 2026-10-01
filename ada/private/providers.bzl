@@ -10,7 +10,7 @@ AdaInfo = provider(
         "transitive_body_alidirs": "depset[str]: Dirs containing body ALIs.",
         "transitive_body_alis": "depset[File]: Body ALIs reachable through deps (binder inputs).",
         "transitive_exported_bodies": "depset[File]: .adb sources from libs marked exports_bodies; compile inputs for cross-lib generic instantiation.",
-        "transitive_objects": "depset[File]: Body .o files reachable through deps (link inputs).",
+        "transitive_objects": "depset[File]: Body .o files reachable through deps (link inputs). Objects inside an `ada_shared_library` are not included; that code is reached through its CcInfo.",
         "transitive_spec_alidirs": "depset[str]: Dirs containing spec ALIs.",
         "transitive_spec_alis": "depset[File]: Spec ALIs reachable through deps (compile inputs).",
         "transitive_specs": "depset[File]: .ads files reachable through deps.",

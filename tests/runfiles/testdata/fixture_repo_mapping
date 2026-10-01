@@ -1,0 +1,5 @@
+,my_data,_main
+,foo,+ext+foo
++*,foo,+star+foo
++deps+*,foo,+deps+foo
++deps+bar,foo,+deps+bar+foo
