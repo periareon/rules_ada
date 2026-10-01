@@ -691,11 +691,14 @@ def _link_executable(
 
     all_dep_files = dep_libs + dep_extra_inputs
     has_dynamic_deps = any([f.extension in ("so", "dylib", "dll") for f in all_dep_files])
-    if has_dynamic_deps:
-        if _is_macos(ada_toolchain):
-            all_link_flags.append("-Wl,-rpath,@loader_path")
-        elif not _is_windows(ada_toolchain):
-            all_link_flags.append("-Wl,-rpath,$ORIGIN")
+    if has_dynamic_deps and not _is_macos(ada_toolchain) and not _is_windows(ada_toolchain):
+        all_link_flags.append("-Wl,-rpath,$ORIGIN")
+
+    # macOS needs no explicit rpath: GCC's Darwin driver already emits
+    # `-rpath @loader_path` (and its own library directories) for every
+    # executable (DARWIN_RPATH_SPEC, GCC 15+). Adding it again produces a
+    # duplicate LC_RPATH, which dyld on macOS 15.4+ / 26 refuses to load
+    # ("dyld: duplicate LC_RPATH '@loader_path'").
 
     process_wrapper = ada_toolchain.process_wrapper
 

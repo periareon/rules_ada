@@ -119,9 +119,12 @@ def _gnat_repository_impl(repository_ctx):
 
     rt = _find_runtime_paths(repository_ctx)
 
+    # Static archives are scanned once, in order, by GNU ld: libgnarl (the
+    # tasking runtime) references symbols in libgnat, so it must come first.
+    # This is the order gnatlink uses (-lgnarl -lgnat).
     link_flags = [
-        '"%s/libgnat.a"' % rt.adalib,
         '"%s/libgnarl.a"' % rt.adalib,
+        '"%s/libgnat.a"' % rt.adalib,
         '"%s/libgcc.a"' % rt.gcc_lib,
     ]
 
@@ -129,6 +132,13 @@ def _gnat_repository_impl(repository_ctx):
     libatomic = repository_ctx.path("lib/libatomic.a")
     if libatomic.exists:
         link_flags.append('"lib/libatomic.a"')
+
+    # System libraries the GNAT runtime needs that gnatlink would normally
+    # add from the binder's option list (which rules_ada scrubs): libm for
+    # Ada.Numerics, and on glibc older than 2.34 (RHEL 8, Ubuntu 20.04) the
+    # then-separate pthread/dl/rt libraries.  Harmless on newer glibc.
+    if "linux" in repository_ctx.attr.platform:
+        link_flags.extend(['"-lm"', '"-lpthread"', '"-ldl"', '"-lrt"'])
 
     # On macOS, GNAT's gcc has a hardcoded --sysroot fallback that only
     # works for the SDK version it was built against. Use a placeholder

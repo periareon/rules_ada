@@ -1,0 +1,9 @@
+load("//ada:defs.bzl", "ada_test")
+
+# Exercises the parts of the GNAT runtime that need more than libgnat.a on
+# the link line: tasking (libgnarl, which must precede libgnat for GNU ld),
+# elementary functions (libm) and zero-cost exceptions (libgcc_eh).
+ada_test(
+    name = "runtime_test",
+    srcs = ["runtime_test.adb"],
+)
