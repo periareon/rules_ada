@@ -1,4 +1,5 @@
 load("@rules_rust//rust:rust_binary.bzl", "rust_binary")
+load("@rules_rust//rust:rust_test.bzl", "rust_test")
 
 exports_files([
     "Cargo.toml",
@@ -15,5 +16,11 @@ rust_binary(
         "@racov//:serde",
         "@racov//:serde_json",
         "@racov//:walkdir",
+        "@rules_rust//rust/runfiles",
     ],
+)
+
+rust_test(
+    name = "collect_ada_coverage_test",
+    crate = ":collect_ada_coverage",
 )

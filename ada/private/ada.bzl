@@ -12,28 +12,45 @@ _SRC_EXTENSIONS = [".ads", ".adb"]
 
 _CC_TOOLCHAIN_TYPE = "@rules_cc//cc:toolchain_type"
 
-def _cc_action_env(ctx):
+def _cc_toolchain(ctx):
+    """The optional CC toolchain with a configured feature set, or None.
+
+    Returns:
+        struct(cc_toolchain, feature_configuration) or None when no CC
+        toolchain is registered for the current platform.
+    """
+    cc_toolchain_info = ctx.toolchains[_CC_TOOLCHAIN_TYPE]
+    if not cc_toolchain_info or not hasattr(cc_toolchain_info, "cc"):
+        return None
+    cc_toolchain = cc_toolchain_info.cc
+    return struct(
+        cc_toolchain = cc_toolchain,
+        feature_configuration = cc_common.configure_features(
+            ctx = ctx,
+            cc_toolchain = cc_toolchain,
+        ),
+    )
+
+def _cc_action_env(ctx, cc):
     """Get environment variables for link/archive actions.
 
     Starts with default_shell_env, then merges CC toolchain feature env
     vars on top (e.g., DEVELOPER_DIR, SDKROOT from apple_support).
+
+    Args:
+        ctx: rule context.
+        cc: struct from _cc_toolchain, or None.
     """
     env = dict(ctx.configuration.default_shell_env)
-    cc_toolchain_info = ctx.toolchains[_CC_TOOLCHAIN_TYPE]
-    if cc_toolchain_info and hasattr(cc_toolchain_info, "cc"):
-        cc_toolchain = cc_toolchain_info.cc
-        feature_configuration = cc_common.configure_features(
-            ctx = ctx,
-            cc_toolchain = cc_toolchain,
-        )
+    if cc:
         env.update(cc_common.get_environment_variables(
-            feature_configuration = feature_configuration,
+            feature_configuration = cc.feature_configuration,
             action_name = ACTION_NAMES.cpp_link_static_library,
             variables = cc_common.empty_variables(),
         ))
     return {"env": env}
 
-def _cc_coverage_link_flags(ctx):
+def _cc_coverage_link_flags(cc):
     """Derive LLVM profile runtime link flags from the CC toolchain.
 
     On macOS, C dependencies compiled by Apple clang get LLVM profile
@@ -43,43 +60,99 @@ def _cc_coverage_link_flags(ctx):
     This derives the library path from the CC toolchain's built-in
     include directories (already discovered by rules_cc's cc_configure
     extension) rather than executing any commands.
+
+    Args:
+        cc: struct from _cc_toolchain, or None.
     """
-    cc_toolchain_info = ctx.toolchains[_CC_TOOLCHAIN_TYPE]
-    if not cc_toolchain_info or not hasattr(cc_toolchain_info, "cc"):
+    if not cc or cc.cc_toolchain.compiler != "clang":
         return []
-    cc_toolchain = cc_toolchain_info.cc
-    if cc_toolchain.compiler != "clang":
-        return []
-    for d in cc_toolchain.built_in_include_directories:
+    for d in cc.cc_toolchain.built_in_include_directories:
         if "/lib/clang/" in d and d.endswith("/include"):
             return [d.removesuffix("/include") + "/lib/darwin/libclang_rt.profile_osx.a"]
     return []
 
-def _cc_toolchain_ar(ctx):
+def _cc_toolchain_ar(cc):
     """Get the archiver path and files from the CC toolchain, if available.
 
-    Returns a struct with ar_path (str) and all_files (depset), or None.
-    """
-    cc_toolchain_info = ctx.toolchains[_CC_TOOLCHAIN_TYPE]
-    if not cc_toolchain_info or not hasattr(cc_toolchain_info, "cc"):
-        return None
-    cc_toolchain = cc_toolchain_info.cc
-    feature_configuration = cc_common.configure_features(
-        ctx = ctx,
-        cc_toolchain = cc_toolchain,
-    )
-    ar_path = cc_common.get_tool_for_action(
-        feature_configuration = feature_configuration,
-        action_name = "c++-link-static-library",
-    )
-    return struct(ar_path = ar_path, all_files = cc_toolchain.all_files)
+    Args:
+        cc: struct from _cc_toolchain, or None.
 
-def _create_instrumented_files_info(ctx, metadata_files = []):
+    Returns:
+        struct with ar_path (str) and all_files (depset), or None.
+    """
+    if not cc:
+        return None
+    ar_path = cc_common.get_tool_for_action(
+        feature_configuration = cc.feature_configuration,
+        action_name = ACTION_NAMES.cpp_link_static_library,
+    )
+    return struct(ar_path = ar_path, all_files = cc.cc_toolchain.all_files)
+
+def _shared_library_linker_input(ctx, cc, shared_lib):
+    """Describe a freshly linked shared library for CcInfo consumers.
+
+    With a CC toolchain available the library is exposed as a proper
+    dynamic `LibraryToLink`, so cc_binary and ada_binary consumers link it
+    dynamically and know to set up rpaths and runfiles. Without one,
+    cc_common cannot describe a dynamic library and the path is passed
+    verbatim as a link flag.
+
+    Args:
+        ctx: rule context.
+        cc: struct from _cc_toolchain, or None.
+        shared_lib: File, the linked shared library.
+    """
+    if cc:
+        return ada_common.create_linker_input(
+            owner = ctx.label,
+            libraries = depset([cc_common.create_library_to_link(
+                actions = ctx.actions,
+                feature_configuration = cc.feature_configuration,
+                cc_toolchain = cc.cc_toolchain,
+                dynamic_library = shared_lib,
+            )]),
+        )
+    return ada_common.create_linker_input(
+        owner = ctx.label,
+        user_link_flags = depset([shared_lib.path]),
+        additional_inputs = depset([shared_lib]),
+    )
+
+def _dynamic_only_linking_context(linking_contexts):
+    """Keep only the shared-library parts of dependency linking contexts.
+
+    Static archives and link flags of an `ada_shared_library`'s deps are
+    absorbed into the .so itself; forwarding them would make consumers link
+    a second, static copy of that code. Shared libraries the .so links
+    against must still reach the consumer so they are present at runtime.
+    """
+    linker_inputs = []
+    for lc in linking_contexts:
+        for linker_input in lc.linker_inputs.to_list():
+            dynamic_libs = [
+                lib
+                for lib in linker_input.libraries
+                if lib.dynamic_library and not lib.static_library and not lib.pic_static_library
+            ]
+            if dynamic_libs:
+                linker_inputs.append(ada_common.create_linker_input(
+                    owner = linker_input.owner,
+                    libraries = depset(dynamic_libs),
+                ))
+            elif not linker_input.libraries and any([
+                ada_common.is_dynamic_library(f)
+                for f in linker_input.additional_inputs
+            ]):
+                # The no-CC-toolchain fallback of _shared_library_linker_input.
+                linker_inputs.append(linker_input)
+    return ada_common.create_linking_context(linker_inputs = depset(linker_inputs))
+
+def _create_instrumented_files_info(ctx, metadata_files = [], source_attributes = ["srcs"]):
     """Create an InstrumentedFilesInfo provider for code coverage support."""
     source_files = [f for f in ctx.files.srcs if f.extension in ("ads", "adb")]
     return coverage_common.instrumented_files_info(
         ctx,
-        source_attributes = ["srcs"],
+        source_attributes = source_attributes,
         dependency_attributes = ["deps", "data"],
         extensions = [ext.lstrip(".") for ext in _SRC_EXTENSIONS],
         metadata_files = source_files + metadata_files,
@@ -112,7 +185,40 @@ _COMMON_ATTRS = {
         doc = "Ada source files (.ads specs and .adb bodies).",
         allow_files = _SRC_EXTENSIONS,
     ),
+    "subunits": attr.label_list(
+        allow_files = [".adb"],
+        doc = "Body files that are `separate` subunits, listed explicitly to bypass " +
+              "the hyphen-stem heuristic. Files listed here MUST also appear in `srcs`. " +
+              "They flow as inputs to their parent unit's compile but get no standalone " +
+              "compile action.",
+    ),
 }
+
+_EXPORTS_BODIES_ATTR = {
+    "exports_bodies": attr.bool(
+        default = False,
+        doc = "If True, this library's body sources flow into downstream compile inputs. " +
+              "Set this on libraries whose public API exposes generics, since cross-unit " +
+              "generic instantiation requires the generic body at the instantiation site's " +
+              "compile time.",
+    ),
+}
+
+def _split_units(srcs, explicit_subunits):
+    """Group sources into compilation units and subunits.
+
+    Args:
+        srcs: list[File] of .ads/.adb sources.
+        explicit_subunits: list[File] from the `subunits` attribute.
+
+    Returns:
+        tuple of (units_by_stem, subunits) as produced by collect_units,
+        with the explicit subunits appended.
+    """
+    explicit_subunit_set = {f.path: True for f in explicit_subunits}
+    auto_srcs = [s for s in srcs if s.path not in explicit_subunit_set]
+    units_by_stem, heuristic_subunits = collect_units(auto_srcs)
+    return units_by_stem, heuristic_subunits + explicit_subunits
 
 def _collect_deps(deps):
     """Extract dependency info from a list of dep targets.
@@ -225,8 +331,25 @@ def _compile_units(ctx, ada_toolchain, dep_view, units_by_stem, subunits, compil
         subunits = subunits,
     )
 
-def _make_ada_info(result, dep_view, cc_info, exports_bodies = False):
-    """Construct the AdaInfo provider from compilation results."""
+def _make_ada_info(result, dep_view, cc_info, exports_bodies = False, propagate_objects = True):
+    """Construct the AdaInfo provider from compilation results.
+
+    Args:
+        result: struct from _compile_units.
+        dep_view: struct from merge_ada_infos.
+        cc_info: CcInfo to embed.
+        exports_bodies: bool, whether body sources flow to consumers.
+        propagate_objects: bool, whether this target's and its deps' objects
+            are link inputs for consumers. False for shared libraries, whose
+            objects live inside the .so and are reached through CcInfo.
+
+    Returns:
+        AdaInfo provider.
+    """
+    if propagate_objects:
+        transitive_objects = depset(result.direct_objects, transitive = [dep_view.transitive_objects])
+    else:
+        transitive_objects = depset()
     direct_srcdirs = sorted({s.dirname: None for s in result.all_specs}.keys())
     direct_spec_alidirs = sorted({a.dirname: None for a in result.direct_spec_alis}.keys())
     direct_body_alidirs = sorted({a.dirname: None for a in result.direct_body_alis}.keys())
@@ -240,7 +363,7 @@ def _make_ada_info(result, dep_view, cc_info, exports_bodies = False):
         direct_objects = depset(result.direct_objects),
         transitive_spec_alis = depset(result.direct_spec_alis, transitive = [dep_view.transitive_spec_alis]),
         transitive_body_alis = depset(result.direct_body_alis, transitive = [dep_view.transitive_body_alis]),
-        transitive_objects = depset(result.direct_objects, transitive = [dep_view.transitive_objects]),
+        transitive_objects = transitive_objects,
         transitive_specs = depset(result.all_specs, transitive = [dep_view.transitive_specs]),
         transitive_exported_bodies = depset(direct_exported_bodies, transitive = [dep_view.transitive_exported_bodies]),
         transitive_srcdirs = depset(direct_srcdirs, transitive = [dep_view.transitive_srcdirs]),
@@ -255,24 +378,19 @@ def _make_ada_info(result, dep_view, cc_info, exports_bodies = False):
 
 def _ada_library_impl(ctx):
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
+    cc = _cc_toolchain(ctx)
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
 
-    explicit_subunits = ctx.files.subunits if hasattr(ctx.files, "subunits") else []
-    explicit_subunit_set = {f.path: True for f in explicit_subunits}
-    auto_srcs = [s for s in ctx.files.srcs if s.path not in explicit_subunit_set]
-    units_by_stem, heuristic_subunits = collect_units(auto_srcs)
-    subunits = heuristic_subunits + explicit_subunits
-
-    compile_data = ctx.files.compile_data if hasattr(ctx.files, "compile_data") else []
+    units_by_stem, subunits = _split_units(ctx.files.srcs, ctx.files.subunits)
     result = _compile_units(
         ctx,
         ada_toolchain,
         dep_view,
         units_by_stem,
         subunits,
-        compile_data,
+        ctx.files.compile_data,
         coverage_enabled = ctx.configuration.coverage_enabled,
         pic = False,
     )
@@ -284,8 +402,8 @@ def _ada_library_impl(ctx):
             ada_toolchain = ada_toolchain,
             objects = result.direct_objects,
             name = ctx.label.name,
-            cc_toolchain = _cc_toolchain_ar(ctx) if not ada_toolchain.ar else None,
-            **_cc_action_env(ctx)
+            cc_toolchain = _cc_toolchain_ar(cc) if not ada_toolchain.ar else None,
+            **_cc_action_env(ctx, cc)
         )
         lib_to_link = cc_common.create_library_to_link(
             actions = ctx.actions,
@@ -314,8 +432,7 @@ def _ada_library_impl(ctx):
         linking_context = merged_linking_context,
     )
 
-    exports_bodies = ctx.attr.exports_bodies if hasattr(ctx.attr, "exports_bodies") else False
-    ada_info = _make_ada_info(result, dep_view, cc_info, exports_bodies = exports_bodies)
+    ada_info = _make_ada_info(result, dep_view, cc_info, exports_bodies = ctx.attr.exports_bodies)
 
     return [
         DefaultInfo(
@@ -327,22 +444,7 @@ def _ada_library_impl(ctx):
         _create_instrumented_files_info(ctx, metadata_files = result.gcno_files),
     ]
 
-_LIBRARY_ATTRS = _COMMON_ATTRS | {
-    "exports_bodies": attr.bool(
-        default = False,
-        doc = "If True, this library's body sources flow into downstream compile inputs. " +
-              "Set this on libraries whose public API exposes generics, since cross-unit " +
-              "generic instantiation requires the generic body at the instantiation site's " +
-              "compile time.",
-    ),
-    "subunits": attr.label_list(
-        allow_files = [".adb"],
-        doc = "Body files that are `separate` subunits, listed explicitly to bypass " +
-              "the hyphen-stem heuristic. Files listed here MUST also appear in `srcs`. " +
-              "They flow as inputs to their parent unit's compile but get no standalone " +
-              "compile action.",
-    ),
-}
+_LIBRARY_ATTRS = _COMMON_ATTRS | _EXPORTS_BODIES_ATTR
 
 ada_library = rule(
     doc = "Compiles Ada source files into a library. " +
@@ -363,7 +465,7 @@ ada_library = rule(
 # ada_static_library
 # --------------------------------------------------------------------------- #
 
-_ARTIFACT_LIBRARY_ATTRS = _COMMON_ATTRS | {
+_ARTIFACT_LIBRARY_ATTRS = _COMMON_ATTRS | _EXPORTS_BODIES_ATTR | {
     "lib_name": attr.string(
         doc = "Library name for gnatbind -L (unique elaboration namespace). " +
               "Defaults to the target name.",
@@ -372,12 +474,12 @@ _ARTIFACT_LIBRARY_ATTRS = _COMMON_ATTRS | {
 
 def _ada_static_library_impl(ctx):
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
+    cc = _cc_toolchain(ctx)
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
 
-    units_by_stem, subunits = collect_units(ctx.files.srcs)
-    compile_data = ctx.files.compile_data if hasattr(ctx.files, "compile_data") else []
+    units_by_stem, subunits = _split_units(ctx.files.srcs, ctx.files.subunits)
 
     coverage_enabled = ctx.configuration.coverage_enabled
     result = _compile_units(
@@ -386,7 +488,7 @@ def _ada_static_library_impl(ctx):
         dep_view,
         units_by_stem,
         subunits,
-        compile_data,
+        ctx.files.compile_data,
         coverage_enabled = coverage_enabled,
         pic = True,
     )
@@ -413,8 +515,8 @@ def _ada_static_library_impl(ctx):
             ada_toolchain = ada_toolchain,
             objects = all_objects,
             name = ctx.label.name,
-            cc_toolchain = _cc_toolchain_ar(ctx) if not ada_toolchain.ar else None,
-            **_cc_action_env(ctx)
+            cc_toolchain = _cc_toolchain_ar(cc) if not ada_toolchain.ar else None,
+            **_cc_action_env(ctx, cc)
         )
 
         lib_to_link = cc_common.create_library_to_link(
@@ -445,7 +547,7 @@ def _ada_static_library_impl(ctx):
         linking_context = merged_linking_context,
     )
 
-    ada_info = _make_ada_info(result, dep_view, cc_info)
+    ada_info = _make_ada_info(result, dep_view, cc_info, exports_bodies = ctx.attr.exports_bodies)
 
     return [
         DefaultInfo(
@@ -475,12 +577,12 @@ ada_static_library = rule(
 
 def _ada_shared_library_impl(ctx):
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
+    cc = _cc_toolchain(ctx)
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
 
-    units_by_stem, subunits = collect_units(ctx.files.srcs)
-    compile_data = ctx.files.compile_data if hasattr(ctx.files, "compile_data") else []
+    units_by_stem, subunits = _split_units(ctx.files.srcs, ctx.files.subunits)
 
     coverage_enabled = ctx.configuration.coverage_enabled
     result = _compile_units(
@@ -489,7 +591,7 @@ def _ada_shared_library_impl(ctx):
         dep_view,
         units_by_stem,
         subunits,
-        compile_data,
+        ctx.files.compile_data,
         coverage_enabled = coverage_enabled,
         pic = True,
     )
@@ -518,22 +620,20 @@ def _ada_shared_library_impl(ctx):
             dep_linking_contexts = dep_info.linking_contexts,
             user_link_flags = ctx.attr.linkopts,
             coverage_enabled = coverage_enabled,
-            cc_coverage_link_flags = _cc_coverage_link_flags(ctx) if coverage_enabled else [],
+            cc_coverage_link_flags = _cc_coverage_link_flags(cc) if coverage_enabled else [],
             name = ctx.label.name,
-            **_cc_action_env(ctx)
+            **_cc_action_env(ctx, cc)
         )
 
-        linker_input = ada_common.create_linker_input(
-            owner = ctx.label,
-            user_link_flags = depset([shared_lib.path]),
-            additional_inputs = depset([shared_lib]),
-        )
         own_linking_context = ada_common.create_linking_context(
-            linker_inputs = depset([linker_input]),
+            linker_inputs = depset([_shared_library_linker_input(ctx, cc, shared_lib)]),
         )
 
         merged_linking_context = ada_common.merge_linking_contexts(
-            linking_contexts = [own_linking_context] + dep_info.linking_contexts,
+            linking_contexts = [
+                own_linking_context,
+                _dynamic_only_linking_context(dep_info.linking_contexts),
+            ],
         )
         files = [shared_lib]
     else:
@@ -547,7 +647,15 @@ def _ada_shared_library_impl(ctx):
         linking_context = merged_linking_context,
     )
 
-    ada_info = _make_ada_info(result, dep_view, cc_info)
+    # The objects (ours and our deps') are inside the .so; consumers must
+    # reach that code through the shared library, not by relinking it.
+    ada_info = _make_ada_info(
+        result,
+        dep_view,
+        cc_info,
+        exports_bodies = ctx.attr.exports_bodies,
+        propagate_objects = not has_objects,
+    )
 
     runfiles = _build_runfiles(ctx).merge(ctx.runfiles(files = files))
 
@@ -584,6 +692,7 @@ _EXECUTABLE_ATTRS = _COMMON_ATTRS | {
     ),
     "main": attr.label(
         doc = "Main Ada source file containing the entry point procedure. " +
+              "It is compiled even if it is not listed in `srcs`. " +
               "If not set, the first .adb file in srcs is used.",
         allow_single_file = [".adb"],
     ),
@@ -593,44 +702,43 @@ def _get_gcov(ada_toolchain):
     """Get the gcov binary from the Ada toolchain."""
     return ada_toolchain.gcov
 
-def _find_main_ali(ctx, direct_body_alis):
-    """Determine which ALI file corresponds to the main program unit."""
-    main_ali = None
+def _executable_srcs(ctx):
+    """Sources to compile for an executable: `srcs` plus `main` if absent from it."""
+    srcs = list(ctx.files.srcs)
+    if ctx.file.main and ctx.file.main not in srcs:
+        srcs.append(ctx.file.main)
+    return srcs
 
-    if ctx.attr.main:
-        main_stem = ctx.file.main.basename.rsplit(".", 1)[0]
-        for ali in direct_body_alis:
-            if ali.basename == main_stem + ".ali":
-                main_ali = ali
-                break
+def _main_source(ctx, subunits):
+    """The main program's source file: `main`, else the first body in `srcs`."""
+    if ctx.file.main:
+        return ctx.file.main
+    for src in ctx.files.srcs:
+        if src.extension == "adb" and src not in subunits:
+            return src
+    fail("No main unit found for %s. Set `main` or list a .adb source file." % ctx.label)
 
-    if not main_ali and direct_body_alis:
-        adb_files = [s for s in ctx.files.srcs if s.extension == "adb"]
-        if adb_files:
-            first_stem = adb_files[0].basename.rsplit(".", 1)[0]
-            for ali in direct_body_alis:
-                if ali.basename == first_stem + ".ali":
-                    main_ali = ali
-                    break
-        if not main_ali:
-            main_ali = direct_body_alis[0]
-
-    if not main_ali:
-        fail("No main unit found for %s. Provide at least one .adb source file." % ctx.label)
-
-    return main_ali
+def _find_main_ali(ctx, main, direct_body_alis):
+    """The ALI file produced for the main program's source."""
+    main_stem = main.basename.rsplit(".", 1)[0]
+    for ali in direct_body_alis:
+        if ali.basename == main_stem + ".ali":
+            return ali
+    fail("rules_ada: main %s of %s did not produce a compilation unit. " % (main.path, ctx.label) +
+         "Is it a `separate` subunit? Only standalone .adb bodies can be the main program.")
 
 def _build_executable(ctx, is_test):
     """Shared implementation for ada_binary and ada_test."""
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
+    cc = _cc_toolchain(ctx)
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
 
     coverage_enabled = ctx.configuration.coverage_enabled
 
-    units_by_stem, subunits = collect_units(ctx.files.srcs)
-    compile_data = ctx.files.compile_data if hasattr(ctx.files, "compile_data") else []
+    units_by_stem, subunits = _split_units(_executable_srcs(ctx), ctx.files.subunits)
+    main = _main_source(ctx, subunits)
 
     result = _compile_units(
         ctx,
@@ -638,12 +746,12 @@ def _build_executable(ctx, is_test):
         dep_view,
         units_by_stem,
         subunits,
-        compile_data,
+        ctx.files.compile_data,
         coverage_enabled = coverage_enabled,
         pic = False,
     )
 
-    main_ali = _find_main_ali(ctx, result.direct_body_alis)
+    main_ali = _find_main_ali(ctx, main, result.direct_body_alis)
 
     all_ali = depset(
         direct = result.direct_body_alis,
@@ -677,17 +785,17 @@ def _build_executable(ctx, is_test):
         user_link_flags = ctx.attr.linkopts,
         link_deps_statically = ctx.attr.linkstatic,
         coverage_enabled = coverage_enabled,
-        cc_coverage_link_flags = _cc_coverage_link_flags(ctx) if coverage_enabled else [],
+        cc_coverage_link_flags = _cc_coverage_link_flags(cc) if coverage_enabled else [],
         name = ctx.label.name,
-        **_cc_action_env(ctx)
+        **_cc_action_env(ctx, cc)
     )
     runfiles = _build_runfiles(ctx)
     env = {}
     env_inherit = []
 
     if is_test:
-        env = dict(ctx.attr.env) if hasattr(ctx.attr, "env") and ctx.attr.env else {}
-        env_inherit = ctx.attr.env_inherit if hasattr(ctx.attr, "env_inherit") else []
+        env = dict(ctx.attr.env)
+        env_inherit = ctx.attr.env_inherit
         if coverage_enabled:
             gcov_file = _get_gcov(ada_toolchain)
             coverage_executable = ctx.executable._collect_cc_coverage
@@ -707,7 +815,11 @@ def _build_executable(ctx, is_test):
             runfiles = runfiles,
             executable = executable,
         ),
-        _create_instrumented_files_info(ctx, metadata_files = result.gcno_files),
+        _create_instrumented_files_info(
+            ctx,
+            metadata_files = result.gcno_files,
+            source_attributes = ["srcs", "main"],
+        ),
     ]
 
     if is_test:

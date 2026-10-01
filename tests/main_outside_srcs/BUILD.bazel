@@ -1,0 +1,27 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("//ada:defs.bzl", "ada_binary")
+
+# `main` names a file that is not in `srcs`; it must still be compiled and
+# used as the main program rather than silently falling back to util.adb.
+ada_binary(
+    name = "main",
+    srcs = [
+        "util.adb",
+        "util.ads",
+    ],
+    main = "prog.adb",
+)
+
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(execpath main.output)"],
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+)

@@ -158,7 +158,7 @@ def _gnat_repository_impl(repository_ctx):
     ))
 
 gnat_repository = repository_rule(
-    doc = "Downloads a pre-built GNAT FSF archive and creates an ada_toolchain target.",
+    doc = "Downloads a pre-built hermetic-gnat archive and creates an ada_toolchain target.",
     implementation = _gnat_repository_impl,
     attrs = {
         "integrity": attr.string(

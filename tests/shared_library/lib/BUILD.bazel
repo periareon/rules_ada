@@ -1,0 +1,12 @@
+load("//ada:defs.bzl", "ada_shared_library")
+
+# Lives in its own package so the consuming executable in the parent package
+# exercises the cross-directory rpath case.
+ada_shared_library(
+    name = "math_ops",
+    srcs = [
+        "math_ops.adb",
+        "math_ops.ads",
+    ],
+    visibility = ["//tests/shared_library:__pkg__"],
+)

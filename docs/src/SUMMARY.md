@@ -4,6 +4,8 @@
 
 ---
 
+- [Toolchains](./toolchains.md)
+- [Runfiles](./runfiles.md)
 - [Rules](./rules.md)
 
   - [ada_binary](./ada_binary.md)

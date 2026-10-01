@@ -1,0 +1,43 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//ada:defs.bzl", "ada_binary")
+
+# `registry.c` is referenced from the Ada main. `plugin.c` is referenced by
+# nothing: it only registers itself from a constructor. Without `alwayslink`
+# the linker would drop plugin.o from the archive and the count would be 0.
+#
+# The constructor uses a GCC/Clang attribute, so the test is skipped on
+# Windows where the C toolchain is MSVC.
+cc_library(
+    name = "plugins",
+    srcs = [
+        "plugin.c",
+        "registry.c",
+    ],
+    hdrs = ["registry.h"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    alwayslink = True,
+)
+
+ada_binary(
+    name = "main",
+    srcs = ["main.adb"],
+    deps = [":plugins"],
+)
+
+run_binary(
+    name = "main_output",
+    outs = ["main.output"],
+    args = ["$(execpath main.output)"],
+    tool = ":main",
+)
+
+diff_test(
+    name = "main_test",
+    file1 = "main.expected",
+    file2 = "main.output",
+)

@@ -39,7 +39,13 @@ ada_toolchain = rule(
 Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
 archiver (ar), and compilation/linking flags.
 
-Example:
+The toolchains shipped with `rules_ada` are created by its module extension;
+this rule is only needed to use a GNAT installation of your own.
+
+`link_flags` entries that are plain relative paths (not starting with `-` or
+`/`) and `-L` directories are resolved against the toolchain repository
+root, which is taken to be the parent of the compiler's `bin/` directory.
+The GNAT runtime archives must be listed explicitly, tasking runtime first:
 
 ```python
 load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
@@ -53,7 +59,12 @@ ada_toolchain(
     compiler_lib = "@gnat//:compiler_lib",
     gcov = "@gnat//:bin/gcov",
     compile_flags = ["-O2"],
-    link_flags = ["-lgnat"],
+    link_flags = [
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    ],
+    target_triple = "x86_64-pc-linux-gnu",
 )
 ```
 """,
@@ -102,7 +113,9 @@ ada_toolchain(
             cfg = "exec",
         ),
         "link_flags": attr.string_list(
-            doc = "Additional linker flags (e.g., `-lgnat`, `-lgnarl`).",
+            doc = "Linker flags added to every executable and (on Windows) shared library link. " +
+                  "Relative paths and `-L` directories are resolved against the toolchain repository root; " +
+                  "list the GNAT runtime archives here (`libgnarl.a` before `libgnat.a`, then `libgcc.a`).",
         ),
         "target_triple": attr.string(
             doc = "GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').",

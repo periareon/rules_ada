@@ -11,7 +11,7 @@ bazel_dep(name = "rules_ada", version = "{version}")
 ## Getting started
 
 1. Add `rules_ada` to `MODULE.bazel`.
-2. Define Ada targets with rules from `//ada:defs.bzl`.
+2. Define Ada targets with rules from `@rules_ada//ada:defs.bzl`.
 3. Build or test with Bazel:
 
 ```bash
@@ -25,12 +25,12 @@ bazel test //:your_test
 - Static and shared library outputs
 - Coverage support via `bazel coverage`
 - Interop with C/C++/Rust via `CcInfo`
-- GNAT toolchain registration support
+- Hermetic GNAT toolchains, registered automatically (see [Toolchains](./toolchains.md))
 
 ## Example
 
 ```python
-load("//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
+load("@rules_ada//ada:defs.bzl", "ada_binary", "ada_library", "ada_test")
 
 ada_library(
     name = "math_utils",
@@ -56,3 +56,8 @@ ada_test(
 ## Rule reference
 
 See [Rules](./rules.md).
+
+## Runfiles
+
+Programs that need data files at runtime can locate them with the
+[runfiles library](./runfiles.md).
