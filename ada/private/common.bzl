@@ -663,6 +663,29 @@ def _is_macos(ada_toolchain):
     """Detect macOS from toolchain target triple."""
     return "darwin" in ada_toolchain.target_triple
 
+def _macos_link_flags(user_link_flags):
+    """Driver flags that keep a macOS link independent of the output base.
+
+    By default GCC's Darwin driver links `@rpath/libgcc_s.1.1.dylib` from its
+    own installation and records absolute rpaths to the toolchain repository
+    so the dylib can be found; see "Linking on macOS" in docs/src/toolchains.md.
+    `-static-libgcc` removes the dylib and `-nodefaultrpaths` the paths. The
+    `@executable_path` rpaths from `_rpath_flags` cover Bazel-built shared
+    deps, so the driver's `@loader_path` entry is not missed.
+
+    A user who asks for `-shared-libgcc` in `linkopts` keeps the driver's
+    defaults, rpaths included, since that is the only way the dylib can load.
+
+    Args:
+        user_link_flags: list[str] user linker flags (linkopts).
+
+    Returns:
+        list[str]: flags to append to the link command line.
+    """
+    if "-shared-libgcc" in user_link_flags:
+        return []
+    return ["-static-libgcc", "-nodefaultrpaths"]
+
 def _is_windows(ada_toolchain):
     """Detect Windows from toolchain target triple."""
     triple = ada_toolchain.target_triple
@@ -713,6 +736,7 @@ def _link_shared(
     if _is_macos(ada_toolchain):
         all_link_flags.append("-Wl,-undefined,dynamic_lookup")
         all_link_flags.append("-Wl,-install_name,@rpath/lib" + name + ".so")
+        all_link_flags.extend(_macos_link_flags(user_link_flags))
     elif _is_windows(ada_toolchain):
         all_link_flags.extend(_resolve_link_flags(ada_toolchain))
     else:
@@ -794,6 +818,8 @@ def _link_executable(
         dep_flags = _msvc_to_mingw_flags(dep_flags)
 
     all_link_flags = list(user_link_flags) + _resolve_link_flags(ada_toolchain)
+    if _is_macos(ada_toolchain):
+        all_link_flags.extend(_macos_link_flags(user_link_flags))
     if coverage_enabled:
         all_link_flags.extend(_gcov_link_flags(ada_toolchain))
         all_link_flags.extend(cc_coverage_link_flags)
