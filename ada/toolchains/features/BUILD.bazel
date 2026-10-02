@@ -1,0 +1,28 @@
+"""Features the Ada rules know by name.
+
+`static_linking_mode` and `dynamic_linking_mode` are requested by the rules
+like `cc_binary` does but carry no arguments, so they need no targets.
+"""
+
+load("//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args", "ada_feature")
+
+package(default_visibility = ["//visibility:public"])
+
+ada_args(
+    name = "static_libgcc_flags",
+    actions = LINK_ACTIONS,
+    args = ["-static-libgcc"],
+    visibility = ["//visibility:private"],
+)
+
+# Link libgcc statically, as gnatlink does on Linux and Windows; the hermetic
+# macOS toolchains enable it too so no output depends on the toolchain's
+# libgcc_s.1.1.dylib. When a target disables it (`features = ["-static_libgcc"]`)
+# the driver's default applies, which is what gnatlink produces on macOS and
+# what programs sharing one unwinder with dlopen'd C++ or JIT code need, and
+# the rules stage the toolchain's `dynamic_runtime_lib` next to the output.
+ada_feature(
+    name = "static_libgcc",
+    args = [":static_libgcc_flags"],
+    feature_name = "static_libgcc",
+)

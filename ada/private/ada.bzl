@@ -3,7 +3,9 @@
 load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load(":actions.bzl", "ACTIONS")
 load(":common.bzl", "ada_common")
+load(":features.bzl", "ada_features")
 load(":providers.bzl", "AdaInfo", "merge_ada_infos")
 load(":toolchain.bzl", "TOOLCHAIN_TYPE")
 load(":unit_naming.bzl", "collect_units")
@@ -12,8 +14,16 @@ _SRC_EXTENSIONS = [".ads", ".adb"]
 
 _CC_TOOLCHAIN_TYPE = "@rules_cc//cc:toolchain_type"
 
-def _cc_toolchain(ctx):
+def _cc_toolchain(ctx, extra_features = []):
     """The optional CC toolchain with a configured feature set, or None.
+
+    The target's `features` are forwarded like `cc_binary` does, plus any
+    `extra_features` (the linking mode for link actions).
+
+    Args:
+        ctx: rule context.
+        extra_features: list[str] feature names requested in addition to
+            `ctx.features`.
 
     Returns:
         struct(cc_toolchain, feature_configuration) or None when no CC
@@ -28,6 +38,8 @@ def _cc_toolchain(ctx):
         feature_configuration = cc_common.configure_features(
             ctx = ctx,
             cc_toolchain = cc_toolchain,
+            requested_features = list(ctx.features) + extra_features,
+            unsupported_features = ctx.disabled_features,
         ),
     )
 
@@ -40,6 +52,9 @@ def _cc_action_env(ctx, cc):
     Args:
         ctx: rule context.
         cc: struct from _cc_toolchain, or None.
+
+    Returns:
+        dict[str, str]: the action environment.
     """
     env = dict(ctx.configuration.default_shell_env)
     if cc:
@@ -48,7 +63,7 @@ def _cc_action_env(ctx, cc):
             action_name = ACTION_NAMES.cpp_link_static_library,
             variables = cc_common.empty_variables(),
         ))
-    return {"env": env}
+    return env
 
 def _cc_coverage_link_flags(cc):
     """Derive LLVM profile runtime link flags from the CC toolchain.
@@ -70,6 +85,48 @@ def _cc_coverage_link_flags(cc):
         if "/lib/clang/" in d and d.endswith("/include"):
             return [d.removesuffix("/include") + "/lib/darwin/libclang_rt.profile_osx.a"]
     return []
+
+def _macos_deployment_target(cc):
+    """The macOS deployment target of the CC toolchain, if it declares one.
+
+    apple_support's toolchains compile with `-target <arch>-apple-macosx<v>`
+    (or an explicit `-mmacosx-version-min=`), while GNAT's driver defaults to
+    the release it was built on and ld then warns for every object "built
+    for newer macOS version than being linked". The version is exposed to
+    the link line as the `macos_deployment_target` variable so the darwin
+    arg sets can pass the same minimum; `--macos_minimum_os` lowers both
+    together. Nothing is derived without a CC toolchain or when its compile
+    line carries no Apple target, so other platforms see `None`.
+
+    Args:
+        cc: struct from _cc_toolchain, or None.
+
+    Returns:
+        str or None: the version, e.g. `15.0`.
+    """
+    if not cc:
+        return None
+    argv = cc_common.get_memory_inefficient_command_line(
+        feature_configuration = cc.feature_configuration,
+        action_name = ACTION_NAMES.c_compile,
+        variables = cc_common.create_compile_variables(
+            feature_configuration = cc.feature_configuration,
+            cc_toolchain = cc.cc_toolchain,
+        ),
+    )
+    for i, arg in enumerate(argv):
+        for prefix in ("-mmacosx-version-min=", "-mmacos-version-min="):
+            if arg.startswith(prefix):
+                return arg[len(prefix):] or None
+        if arg == "-target" and i + 1 < len(argv) and "-apple-macosx" in argv[i + 1]:
+            return argv[i + 1].split("-apple-macosx", 1)[1] or None
+    return None
+
+def _coverage_link_flags(ada_toolchain, cc, coverage_enabled):
+    """Coverage runtime flags for a link, empty unless coverage is on."""
+    if not coverage_enabled:
+        return []
+    return ada_common.gcov_link_flags(ada_toolchain) + _cc_coverage_link_flags(cc)
 
 def _cc_toolchain_ar(cc):
     """Get the archiver path and files from the CC toolchain, if available.
@@ -149,13 +206,12 @@ def _dynamic_only_linking_context(linking_contexts):
 
 def _create_instrumented_files_info(ctx, metadata_files = [], source_attributes = ["srcs"]):
     """Create an InstrumentedFilesInfo provider for code coverage support."""
-    source_files = [f for f in ctx.files.srcs if f.extension in ("ads", "adb")]
     return coverage_common.instrumented_files_info(
         ctx,
         source_attributes = source_attributes,
         dependency_attributes = ["deps", "data"],
         extensions = [ext.lstrip(".") for ext in _SRC_EXTENSIONS],
-        metadata_files = source_files + metadata_files,
+        metadata_files = ctx.files.srcs + metadata_files,
     )
 
 _COMMON_ATTRS = {
@@ -223,26 +279,19 @@ def _split_units(srcs, explicit_subunits):
 def _collect_deps(deps):
     """Extract dependency info from a list of dep targets.
 
-    Returns a struct with dep_view (merged AdaInfo fields), linking_contexts,
-    and compilation_contexts collected from AdaInfo and CcInfo providers.
+    Returns a struct with dep_view (merged AdaInfo fields) and the
+    linking_contexts collected from AdaInfo and CcInfo providers.
     """
     linking_contexts = []
-    compilation_contexts = []
     for dep in deps:
         if AdaInfo in dep:
-            info = dep[AdaInfo]
-            linking_contexts.append(info.cc_info.linking_context)
-            compilation_contexts.append(info.cc_info.compilation_context)
+            linking_contexts.append(dep[AdaInfo].cc_info.linking_context)
         elif CcInfo in dep:
             linking_contexts.append(dep[CcInfo].linking_context)
-            compilation_contexts.append(dep[CcInfo].compilation_context)
-
-    dep_view = merge_ada_infos(deps)
 
     return struct(
-        dep_view = dep_view,
+        dep_view = merge_ada_infos(deps),
         linking_contexts = linking_contexts,
-        compilation_contexts = compilation_contexts,
     )
 
 def _build_runfiles(ctx):
@@ -402,8 +451,8 @@ def _ada_library_impl(ctx):
             ada_toolchain = ada_toolchain,
             objects = result.direct_objects,
             name = ctx.label.name,
-            cc_toolchain = _cc_toolchain_ar(cc) if not ada_toolchain.ar else None,
-            **_cc_action_env(ctx, cc)
+            cc_toolchain = _cc_toolchain_ar(cc),
+            env = _cc_action_env(ctx, cc),
         )
         lib_to_link = cc_common.create_library_to_link(
             actions = ctx.actions,
@@ -515,8 +564,8 @@ def _ada_static_library_impl(ctx):
             ada_toolchain = ada_toolchain,
             objects = all_objects,
             name = ctx.label.name,
-            cc_toolchain = _cc_toolchain_ar(cc) if not ada_toolchain.ar else None,
-            **_cc_action_env(ctx, cc)
+            cc_toolchain = _cc_toolchain_ar(cc),
+            env = _cc_action_env(ctx, cc),
         )
 
         lib_to_link = cc_common.create_library_to_link(
@@ -577,7 +626,11 @@ ada_static_library = rule(
 
 def _ada_shared_library_impl(ctx):
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
-    cc = _cc_toolchain(ctx)
+
+    # A shared library is always "linkstatic", as cc_binary(linkshared = True).
+    linking_mode = ada_features.linking_mode(ctx, True)
+    features = ada_features.link_features(ctx, ada_toolchain, linking_mode)
+    cc = _cc_toolchain(ctx, [linking_mode])
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
@@ -613,16 +666,32 @@ def _ada_shared_library_impl(ctx):
 
         all_objects = result.direct_objects + [binder_obj]
 
-        shared_lib = ada_common.link_shared(
+        output_name = ada_common.artifact_name(ada_toolchain, "shared_library", ctx.label.name)
+
+        # Toolchain runtime libraries staged next to the library; they ship
+        # as default outputs and runfiles so a host that dlopens the library
+        # from either location finds them.
+        dynamic_runtime_libs = ada_common.stage_dynamic_runtime_libs(
             actions = ctx.actions,
             ada_toolchain = ada_toolchain,
+            features = features,
+            output_name = output_name,
+        )
+
+        shared_lib = ada_common.link(
+            actions = ctx.actions,
+            ada_toolchain = ada_toolchain,
+            action = ACTIONS.link_shared_library,
             objects = all_objects,
+            output_name = output_name,
             dep_linking_contexts = dep_info.linking_contexts,
             user_link_flags = ctx.attr.linkopts,
-            coverage_enabled = coverage_enabled,
-            cc_coverage_link_flags = _cc_coverage_link_flags(cc) if coverage_enabled else [],
+            coverage_link_flags = _coverage_link_flags(ada_toolchain, cc, coverage_enabled),
+            macos_deployment_target = _macos_deployment_target(cc),
+            features = features,
+            dynamic_runtime_libs = dynamic_runtime_libs,
+            env = _cc_action_env(ctx, cc),
             name = ctx.label.name,
-            **_cc_action_env(ctx, cc)
         )
 
         own_linking_context = ada_common.create_linking_context(
@@ -635,7 +704,7 @@ def _ada_shared_library_impl(ctx):
                 _dynamic_only_linking_context(dep_info.linking_contexts),
             ],
         )
-        files = [shared_lib]
+        files = [shared_lib] + dynamic_runtime_libs
     else:
         merged_linking_context = ada_common.merge_linking_contexts(
             linking_contexts = dep_info.linking_contexts,
@@ -688,7 +757,9 @@ ada_shared_library = rule(
 _EXECUTABLE_ATTRS = _COMMON_ATTRS | {
     "linkstatic": attr.bool(
         default = True,
-        doc = "Prefer static linking for dependencies.",
+        doc = "Prefer static linking for dependencies. Like `cc_binary`, this also selects the " +
+              "`static_linking_mode` feature; `False` (or `--dynamic_mode=fully`) selects " +
+              "`dynamic_linking_mode` instead.",
     ),
     "main": attr.label(
         doc = "Main Ada source file containing the entry point procedure. " +
@@ -697,10 +768,6 @@ _EXECUTABLE_ATTRS = _COMMON_ATTRS | {
         allow_single_file = [".adb"],
     ),
 }
-
-def _get_gcov(ada_toolchain):
-    """Get the gcov binary from the Ada toolchain."""
-    return ada_toolchain.gcov
 
 def _executable_srcs(ctx):
     """Sources to compile for an executable: `srcs` plus `main` if absent from it."""
@@ -730,7 +797,10 @@ def _find_main_ali(ctx, main, direct_body_alis):
 def _build_executable(ctx, is_test):
     """Shared implementation for ada_binary and ada_test."""
     ada_toolchain = ctx.toolchains[TOOLCHAIN_TYPE].ada_toolchain
-    cc = _cc_toolchain(ctx)
+
+    linking_mode = ada_features.linking_mode(ctx, ctx.attr.linkstatic)
+    features = ada_features.link_features(ctx, ada_toolchain, linking_mode)
+    cc = _cc_toolchain(ctx, [linking_mode])
 
     dep_info = _collect_deps(ctx.attr.deps)
     dep_view = dep_info.dep_view
@@ -777,27 +847,40 @@ def _build_executable(ctx, is_test):
 
     dep_objects = dep_view.transitive_objects.to_list()
 
-    executable = ada_common.link_executable(
+    output_name = ada_common.artifact_name(ada_toolchain, "executable", ctx.label.name)
+
+    # Toolchain runtime libraries staged next to the executable and carried
+    # in its runfiles.
+    dynamic_runtime_libs = ada_common.stage_dynamic_runtime_libs(
         actions = ctx.actions,
         ada_toolchain = ada_toolchain,
+        features = features,
+        output_name = output_name,
+    )
+
+    executable = ada_common.link(
+        actions = ctx.actions,
+        ada_toolchain = ada_toolchain,
+        action = ACTIONS.link_executable,
         objects = all_objects + dep_objects,
+        output_name = output_name,
         dep_linking_contexts = dep_info.linking_contexts,
         user_link_flags = ctx.attr.linkopts,
         link_deps_statically = ctx.attr.linkstatic,
-        coverage_enabled = coverage_enabled,
-        cc_coverage_link_flags = _cc_coverage_link_flags(cc) if coverage_enabled else [],
+        coverage_link_flags = _coverage_link_flags(ada_toolchain, cc, coverage_enabled),
+        macos_deployment_target = _macos_deployment_target(cc),
+        features = features,
+        dynamic_runtime_libs = dynamic_runtime_libs,
+        env = _cc_action_env(ctx, cc),
         name = ctx.label.name,
-        **_cc_action_env(ctx, cc)
     )
-    runfiles = _build_runfiles(ctx)
-    env = {}
-    env_inherit = []
+    runfiles = _build_runfiles(ctx).merge(ctx.runfiles(files = dynamic_runtime_libs))
 
+    providers = []
     if is_test:
         env = dict(ctx.attr.env)
-        env_inherit = ctx.attr.env_inherit
         if coverage_enabled:
-            gcov_file = _get_gcov(ada_toolchain)
+            gcov_file = ada_toolchain.gcov
             coverage_executable = ctx.executable._collect_cc_coverage
             env.setdefault("GCOV_PREFIX_STRIP", "0")
             env["GENERATE_LLVM_LCOV"] = "1"
@@ -808,8 +891,12 @@ def _build_executable(ctx, is_test):
                 env["COVERAGE_GCOV_PATH"] = gcov_file.short_path
                 coverage_runfiles.append(gcov_file)
             runfiles = runfiles.merge(ctx.runfiles(files = coverage_runfiles))
+        providers.append(RunEnvironmentInfo(
+            environment = env,
+            inherited_environment = ctx.attr.env_inherit,
+        ))
 
-    providers = [
+    return providers + [
         DefaultInfo(
             files = depset([executable]),
             runfiles = runfiles,
@@ -821,14 +908,6 @@ def _build_executable(ctx, is_test):
             source_attributes = ["srcs", "main"],
         ),
     ]
-
-    if is_test:
-        providers.append(RunEnvironmentInfo(
-            environment = env,
-            inherited_environment = env_inherit,
-        ))
-
-    return providers
 
 def _ada_binary_impl(ctx):
     return _build_executable(ctx, is_test = False)

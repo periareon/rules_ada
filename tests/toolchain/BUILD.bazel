@@ -1,0 +1,285 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//ada:defs.bzl", "ada_binary", "ada_shared_library", "ada_toolchain")
+load(
+    "//ada/toolchains:defs.bzl",
+    "ACTIONS",
+    "LINK_ACTIONS",
+    "ada_args",
+    "ada_args_list",
+    "ada_feature",
+    "ada_nested_args",
+)
+load(":args_expansion_test_suite.bzl", "args_expansion_test_suite")
+load(":toolchain_test_suite.bzl", "toolchain_test_suite")
+
+# A toolchain assembled from custom args. It is never registered globally;
+# the analysis tests select it with --extra_toolchains, and the placeholder
+# files under fake/ only exist so the attributes resolve.
+
+ada_args(
+    name = "fake_objects",
+    actions = LINK_ACTIONS,
+    args = ["{objects}"],
+)
+
+ada_args(
+    name = "fake_libraries",
+    actions = LINK_ACTIONS,
+    iterate_over = "libraries_to_link",
+    nested = [
+        ":fake_whole_archive",
+        ":fake_plain_library",
+    ],
+)
+
+ada_nested_args(
+    name = "fake_whole_archive",
+    args = ["--whole={libraries_to_link.file}"],
+    requires_true = "libraries_to_link.whole_archive",
+)
+
+ada_nested_args(
+    name = "fake_plain_library",
+    args = ["{libraries_to_link.file}"],
+    requires_false = "libraries_to_link.whole_archive",
+)
+
+ada_args(
+    name = "fake_rpaths",
+    actions = LINK_ACTIONS,
+    args = ["--rpath=ORIGIN/{runtime_library_search_directories}"],
+    iterate_over = "runtime_library_search_directories",
+)
+
+ada_args(
+    name = "fake_output",
+    actions = LINK_ACTIONS,
+    args = [
+        "--out",
+        "{output}",
+        "--basename",
+        "{output_basename}",
+    ],
+)
+
+ada_args(
+    name = "fake_runtime",
+    actions = [ACTIONS.link_executable],
+    args = ["{runtime_libraries}"],
+    data = ["fake/lib/extra.txt"],
+)
+
+ada_args(
+    name = "fake_feature_flag",
+    actions = LINK_ACTIONS,
+    args = ["--fake-feature"],
+)
+
+ada_feature(
+    name = "fake_feature",
+    args = [":fake_feature_flag"],
+    feature_name = "fake_feature",
+)
+
+ada_args_list(
+    name = "fake_link_line",
+    args = [
+        ":fake_objects",
+        ":fake_libraries",
+        ":fake_rpaths",
+        ":fake_output",
+        ":fake_runtime",
+    ],
+)
+
+ada_toolchain(
+    name = "fake_toolchain",
+    args = [":fake_link_line"],
+    artifact_name_patterns = {"executable": "%{name}.fake"},
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    dynamic_runtime_lib = ["fake/lib/libgcc_s.1.1.dylib"],
+    enabled_features = [":fake_feature"],
+    known_features = [
+        ":fake_feature",
+        "//ada/toolchains/features:static_libgcc",
+    ],
+    static_runtime_lib = [
+        "fake/lib/libgnarl.a",
+        "fake/lib/libgnat.a",
+        "fake/lib/libgcc.a",
+    ],
+    tags = ["manual"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+toolchain(
+    name = "fake",
+    toolchain = ":fake_toolchain",
+    toolchain_type = "//ada:toolchain_type",
+)
+
+# The shipped Windows link line, selectable on any host.
+ada_toolchain(
+    name = "fake_windows_toolchain",
+    args = ["//ada/toolchains/args/windows:link_line"],
+    artifact_name_patterns = {
+        "executable": "%{name}.exe",
+        "shared_library": "%{name}.dll",
+    },
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    known_features = ["//ada/toolchains/features:static_libgcc"],
+    static_runtime_lib = [
+        "fake/lib/libgnarl.a",
+        "fake/lib/libgnat.a",
+        "fake/lib/libgcc.a",
+    ],
+    tags = ["manual"],
+    target_triple = "x86_64-w64-mingw32",
+)
+
+toolchain(
+    name = "fake_windows",
+    toolchain = ":fake_windows_toolchain",
+    toolchain_type = "//ada:toolchain_type",
+)
+
+cc_library(
+    name = "fake_alwayslink",
+    srcs = ["fake/empty.c"],
+    tags = ["manual"],
+    alwayslink = True,
+)
+
+ada_binary(
+    name = "fake_main",
+    srcs = ["fake/main.adb"],
+    tags = ["manual"],
+    deps = [":fake_alwayslink"],
+)
+
+ada_binary(
+    name = "fake_windows_main",
+    srcs = ["fake/main.adb"],
+    tags = ["manual"],
+)
+
+ada_shared_library(
+    name = "fake_lib",
+    srcs = [
+        "fake/pkg.adb",
+        "fake/pkg.ads",
+    ],
+    tags = ["manual"],
+)
+
+# Invalid configurations, each expected to fail analysis with a clear message.
+
+ada_args(
+    name = "bad_action",
+    actions = ["assemble"],
+    args = ["x"],
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_variable",
+    actions = LINK_ACTIONS,
+    args = ["{nope}"],
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_args_and_nested",
+    actions = LINK_ACTIONS,
+    args = ["x"],
+    nested = [":fake_plain_library"],
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_list_in_string",
+    actions = LINK_ACTIONS,
+    args = ["--objects={objects}"],
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_requires_true",
+    actions = LINK_ACTIONS,
+    args = ["x"],
+    requires_true = "output",
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_two_requires",
+    actions = LINK_ACTIONS,
+    args = ["x"],
+    requires_none = "objects",
+    requires_not_none = "objects",
+    tags = ["manual"],
+)
+
+ada_args(
+    name = "bad_compile_variable",
+    actions = [ACTIONS.compile],
+    args = ["{output}"],
+    tags = ["manual"],
+)
+
+ada_feature(
+    name = "bad_feature_name",
+    feature_name = "-static_libgcc",
+    tags = ["manual"],
+)
+
+ada_feature(
+    name = "fake_feature_dup",
+    feature_name = "fake_feature",
+    tags = ["manual"],
+)
+
+ada_toolchain(
+    name = "bad_enabled_unknown",
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    enabled_features = [":fake_feature"],
+    tags = ["manual"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+ada_toolchain(
+    name = "bad_duplicate_feature",
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    known_features = [
+        ":fake_feature",
+        ":fake_feature_dup",
+    ],
+    tags = ["manual"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+ada_toolchain(
+    name = "bad_pattern",
+    artifact_name_patterns = {"executable": "fixed"},
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    tags = ["manual"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+ada_toolchain(
+    name = "bad_pattern_category",
+    artifact_name_patterns = {"dll": "%{name}.dll"},
+    binder = "fake/bin/gnatbind",
+    compiler = "fake/bin/gcc",
+    tags = ["manual"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+toolchain_test_suite(name = "toolchain_test_suite")
+
+args_expansion_test_suite(name = "args_expansion_test_suite")

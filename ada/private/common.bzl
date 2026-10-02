@@ -2,6 +2,14 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
+load(":actions.bzl", "ACTIONS")
+load(":args_expansion.bzl", "expand_args")
+load(":features.bzl", "STATIC_LIBGCC", "ada_features")
+load(":toolchain_config.bzl", "artifact_name")
+
+def _toolchain_args(ada_toolchain, action, variables, extra_args = []):
+    """Expand the toolchain's `args` (and any extra ones) for an action."""
+    return expand_args(list(ada_toolchain.args) + extra_args, action, variables)
 
 def _new_args(actions):
     """An Args object that spills to a params file on long command lines.
@@ -68,6 +76,7 @@ def _compile_interface(
     args.add_all(dep_view.transitive_spec_alidirs, format_each = "-I%s")
     args.add_all(dep_view.transitive_body_alidirs, format_each = "-I%s")
     args.add_all(ada_toolchain.compile_flags)
+    args.add_all(_toolchain_args(ada_toolchain, ACTIONS.compile, {}))
     args.add_all(compile_flags)
     args.add(spec)
     args.add("-o")
@@ -84,6 +93,7 @@ def _compile_interface(
                 dep_view.transitive_exported_bodies,
                 ada_toolchain.ada_std,
                 ada_toolchain.compiler_lib,
+                ada_toolchain.args_files,
             ],
         ),
         outputs = [ali],
@@ -157,6 +167,7 @@ def _compile_full(
     args.add_all(dep_view.transitive_spec_alidirs, format_each = "-I%s")
     args.add_all(dep_view.transitive_body_alidirs, format_each = "-I%s")
     args.add_all(ada_toolchain.compile_flags)
+    args.add_all(_toolchain_args(ada_toolchain, ACTIONS.compile, {}))
     if pic:
         args.add("-fPIC")
     args.add_all(compile_flags)
@@ -182,6 +193,7 @@ def _compile_full(
                 dep_view.transitive_exported_bodies,
                 ada_toolchain.ada_std,
                 ada_toolchain.compiler_lib,
+                ada_toolchain.args_files,
             ],
         ),
         outputs = outputs,
@@ -266,6 +278,7 @@ def _bind(
     # Command 1: gnatbind
     args.add(binder)
     args.add_all(ada_toolchain.bind_flags)
+    args.add_all(_toolchain_args(ada_toolchain, ACTIONS.bind, {}))
     for search_dir in sorted(search_dirs.keys()):
         args.add("-I" + search_dir)
     args.add("-o")
@@ -288,7 +301,7 @@ def _bind(
         arguments = [args],
         inputs = depset(
             direct = [binder, compiler] + all_ali_files + transitive_sources,
-            transitive = [ada_toolchain.ada_std, ada_toolchain.compiler_lib],
+            transitive = [ada_toolchain.ada_std, ada_toolchain.compiler_lib, ada_toolchain.args_files],
         ),
         outputs = [binder_adb, binder_ads, binder_obj],
         mnemonic = "AdaBind",
@@ -362,6 +375,7 @@ def _bind_library(
     args.add("-a")
     args.add("-L" + safe_lib)
     args.add_all(ada_toolchain.bind_flags)
+    args.add_all(_toolchain_args(ada_toolchain, ACTIONS.bind, {}))
     args.add_all(dep_view.transitive_body_alidirs, format_each = "-I%s")
     args.add_all(dep_view.transitive_srcdirs, format_each = "-I%s")
     for ali in unit_ali_files:
@@ -390,6 +404,7 @@ def _bind_library(
                 dep_view.transitive_specs,
                 ada_toolchain.ada_std,
                 ada_toolchain.compiler_lib,
+                ada_toolchain.args_files,
             ],
         ),
         outputs = [binder_adb, binder_ads, binder_obj],
@@ -399,46 +414,22 @@ def _bind_library(
 
     return binder_obj
 
-def _resolve_link_flags(ada_toolchain):
-    """Resolve relative paths in toolchain link flags against the repo root.
-
-    The GNAT toolchain stores library paths (e.g. adalib/libgnat.a) relative
-    to its repository root. This resolves them to execroot-relative paths
-    using the compiler location as an anchor (always in <repo>/bin/).
-
-    Args:
-        ada_toolchain: AdaToolchainInfo provider.
-
-    Returns:
-        list[str]: Resolved link flags.
-    """
-    repo_root = paths.dirname(ada_toolchain.compiler.dirname)
-    resolved = []
-    for flag in ada_toolchain.link_flags:
-        if flag.startswith("-L") and not flag[2:].startswith("/"):
-            resolved.append("-L" + repo_root + "/" + flag[2:])
-        elif not flag.startswith("-") and not flag.startswith("/"):
-            resolved.append(repo_root + "/" + flag)
-        else:
-            resolved.append(flag)
-    return resolved
-
 def _gcov_link_flags(ada_toolchain):
-    """Return resolved link flags for libgcov.a from the GNAT toolchain.
+    """Link flags for libgcov.a from the GNAT toolchain.
 
-    Derives the path from the existing libgcc.a link flag, since libgcov.a
-    is always in the same GCC library directory.
+    libgcov.a sits next to libgcc.a in the GCC library directory, so its path
+    is derived from the libgcc.a entry of `static_runtime_lib`; the file itself
+    reaches the action through `compiler_lib`.
 
     Args:
         ada_toolchain: AdaToolchainInfo provider.
 
     Returns:
-        list[str]: Resolved link flags for gcov, or empty list if not found.
+        list[str]: Link flags for gcov, or empty list if libgcc.a is not listed.
     """
-    repo_root = paths.dirname(ada_toolchain.compiler.dirname)
-    for flag in ada_toolchain.link_flags:
-        if flag.endswith("/libgcc.a"):
-            return [repo_root + "/" + flag.rsplit("/", 1)[0] + "/libgcov.a"]
+    for lib in ada_toolchain.static_runtime_lib:
+        if lib.basename == "libgcc.a":
+            return [lib.dirname + "/libgcov.a"]
     return []
 
 _DYNAMIC_LIBRARY_EXTENSIONS = ("so", "dylib", "dll")
@@ -471,7 +462,7 @@ def _collect_cc_link_inputs(linking_contexts, prefer_static = True, use_pic = Fa
                 already encoded in link flags.
     """
     libs = []
-    link_flags = []
+    flags = []
     extra_inputs = []
     for lc in linking_contexts:
         for linker_input in lc.linker_inputs.to_list():
@@ -493,33 +484,9 @@ def _collect_cc_link_inputs(linking_contexts, prefer_static = True, use_pic = Fa
                         dynamic = f == dynamic,
                         alwayslink = lib.alwayslink and f != dynamic,
                     ))
-            link_flags.extend(linker_input.user_link_flags)
+            flags.extend(linker_input.user_link_flags)
             extra_inputs.extend(linker_input.additional_inputs)
-    return struct(libs = libs, flags = link_flags, extra_inputs = extra_inputs)
-
-def _add_link_libraries(args, libs, ada_toolchain):
-    """Add dependency libraries to a link command line.
-
-    Archives marked `alwayslink` (cc_library(alwayslink = True)) must be
-    linked in full so that unreferenced members such as constructors and
-    registration objects survive; plain archive members are only pulled in
-    when they resolve an undefined symbol.
-
-    Args:
-        args: ctx.actions.args() being populated.
-        libs: list[struct(file, dynamic, alwayslink)] from _collect_cc_link_inputs.
-        ada_toolchain: AdaToolchainInfo provider.
-    """
-    macos = _is_macos(ada_toolchain)
-    for lib in libs:
-        if not lib.alwayslink:
-            args.add(lib.file)
-        elif macos:
-            args.add(lib.file, format = "-Wl,-force_load,%s")
-        else:
-            args.add("-Wl,--whole-archive")
-            args.add(lib.file)
-            args.add("-Wl,--no-whole-archive")
+    return struct(libs = libs, flags = flags, extra_inputs = extra_inputs)
 
 def _relative_dir(from_dir, to_dir):
     """Relative path from one directory to another, or "" when they match.
@@ -537,47 +504,34 @@ def _relative_dir(from_dir, to_dir):
         common += 1
     return "/".join([".."] * (len(from_parts) - common) + to_parts[common:])
 
-def _rpath_flags(executable, dynamic_libs, ada_toolchain):
-    """Linker flags so an executable finds its shared library deps at runtime.
+def _runtime_library_search_directories(output, dynamic_libs):
+    """Directories, relative to a link output, holding its shared libraries.
 
-    One entry is emitted per distinct directory, relative to the executable,
-    for both layouts the binary runs from: bazel-bin (`File.path`) and the
-    runfiles tree (`File.short_path`). The two differ for files in external
-    repositories.
-
-    macOS uses `@executable_path` rather than `@loader_path`: they resolve
-    identically for an executable, but GCC's Darwin driver may itself add an
-    `-rpath @loader_path` (when built with --enable-darwin-at-rpath), and
-    dyld on macOS 15.4+ refuses to load a binary with a duplicate LC_RPATH.
-    A distinct string can never collide with it.
+    One entry per distinct directory, for both layouts the output runs from:
+    bazel-bin (`File.path`) and the runfiles tree (`File.short_path`), which
+    differ for files in external repositories. The output's own directory is
+    `.` so templates can always append the entry to an origin token.
 
     Args:
-        executable: File, the executable being linked.
-        dynamic_libs: list[File] of shared libraries it links against.
-        ada_toolchain: AdaToolchainInfo provider.
+        output: File, the executable or shared library being linked.
+        dynamic_libs: list[File] of shared libraries it needs at runtime.
 
     Returns:
-        list[str]: `-Wl,-rpath,...` flags.
+        list[str]: relative directories in first-seen order.
     """
-    origin = "@executable_path" if _is_macos(ada_toolchain) else "$ORIGIN"
-    rel_dirs = {}
+    dirs = {}
     for lib in dynamic_libs:
-        rel_dirs[_relative_dir(executable.dirname, lib.dirname)] = True
-        rel_dirs[_relative_dir(
-            paths.dirname(executable.short_path),
-            paths.dirname(lib.short_path),
-        )] = True
-    return [
-        "-Wl,-rpath," + (origin + "/" + rel if rel else origin)
-        for rel in rel_dirs.keys()
-    ]
+        dirs[_relative_dir(output.dirname, lib.dirname) or "."] = True
+        dirs[_relative_dir(paths.dirname(output.short_path), paths.dirname(lib.short_path)) or "."] = True
+    return dirs.keys()
 
-def _msvc_to_mingw_flags(link_flags):
-    """Convert MSVC-style .lib references to MinGW -l flags.
+def _normalize_dep_link_flags(link_flags):
+    """Convert MSVC-style .lib references to -l flags.
 
-    When C/C++ or Rust dependencies provide Windows system library names
-    in MSVC format (e.g. advapi32.lib), MinGW gcc needs them as -l flags
-    (e.g. -ladvapi32). Only converts bare names without path separators.
+    C/C++ or Rust dependencies may name Windows system libraries in MSVC
+    format (e.g. advapi32.lib); the GCC driver needs them as -l flags
+    (e.g. -ladvapi32). Only bare names without path separators are
+    converted, so the rewrite is safe on every platform.
     """
     result = []
     for flag in link_flags:
@@ -601,7 +555,7 @@ def _archive(
         actions: ctx.actions object.
         ada_toolchain: AdaToolchainInfo provider.
         objects: list[File] of .o files to archive.
-        name: str library name (output will be lib{name}.a).
+        name: str library name; the file name follows the toolchain's `static_library` pattern.
         cc_toolchain: struct with ar_path (str) and all_files (depset),
             or None. Used as fallback when ada_toolchain.ar is None.
         env: dict[str, str] environment variables for the action.
@@ -609,14 +563,16 @@ def _archive(
     Returns:
         File: the static archive.
     """
-    archive = actions.declare_file("lib" + name + ".a")
+    archive = actions.declare_file(_artifact_name(ada_toolchain, "static_library", name))
     ar = ada_toolchain.ar
     process_wrapper = ada_toolchain.process_wrapper
+    toolchain_args = _toolchain_args(ada_toolchain, ACTIONS.archive, {})
 
     if ar:
         args = _new_args(actions)
         args.add("--")
         args.add(ar)
+        args.add_all(toolchain_args)
         args.add("rcs")
         args.add(archive)
         args.add_all(objects)
@@ -624,7 +580,7 @@ def _archive(
         actions.run(
             executable = process_wrapper,
             arguments = [args],
-            inputs = depset([ar] + objects, transitive = [ada_toolchain.compiler_lib]),
+            inputs = depset([ar] + objects, transitive = [ada_toolchain.compiler_lib, ada_toolchain.args_files]),
             outputs = [archive],
             env = env,
             mnemonic = "AdaArchive",
@@ -636,6 +592,7 @@ def _archive(
         args = _new_args(actions)
         args.add("--")
         args.add(cc_toolchain.ar_path)
+        args.add_all(toolchain_args)
         if is_libtool:
             args.add("-static")
             args.add("-o")
@@ -648,7 +605,7 @@ def _archive(
             executable = process_wrapper,
             arguments = [args],
             tools = cc_toolchain.all_files,
-            inputs = depset(objects, transitive = [ada_toolchain.compiler_lib]),
+            inputs = depset(objects, transitive = [ada_toolchain.compiler_lib, ada_toolchain.args_files]),
             outputs = [archive],
             env = env,
             mnemonic = "AdaArchive",
@@ -659,217 +616,156 @@ def _archive(
 
     return archive
 
-def _is_macos(ada_toolchain):
-    """Detect macOS from toolchain target triple."""
-    return "darwin" in ada_toolchain.target_triple
+def _artifact_name(ada_toolchain, category, name):
+    """File name of an output according to the toolchain's name patterns."""
+    return artifact_name(ada_toolchain.artifact_name_patterns, category, name)
 
-def _macos_link_flags(user_link_flags):
-    """Driver flags that keep a macOS link independent of the output base.
+# Directory beside a linked output that holds its staged runtime libraries.
+_DYNAMIC_RUNTIME_DIR_SUFFIX = ".runtime_libs"
 
-    By default GCC's Darwin driver links `@rpath/libgcc_s.1.1.dylib` from its
-    own installation and records absolute rpaths to the toolchain repository
-    so the dylib can be found; see "Linking on macOS" in docs/src/toolchains.md.
-    `-static-libgcc` removes the dylib and `-nodefaultrpaths` the paths. The
-    `@executable_path` rpaths from `_rpath_flags` cover Bazel-built shared
-    deps, so the driver's `@loader_path` entry is not missed.
+def _stage_dynamic_runtime_libs(*, actions, ada_toolchain, features, output_name):
+    """Stage the toolchain's shared runtime libraries beside a link output.
 
-    A user who asks for `-shared-libgcc` in `linkopts` keeps the driver's
-    defaults, rpaths included, since that is the only way the dylib can load.
-
-    Args:
-        user_link_flags: list[str] user linker flags (linkopts).
-
-    Returns:
-        list[str]: flags to append to the link command line.
-    """
-    if "-shared-libgcc" in user_link_flags:
-        return []
-    return ["-static-libgcc", "-nodefaultrpaths"]
-
-def _is_windows(ada_toolchain):
-    """Detect Windows from toolchain target triple."""
-    triple = ada_toolchain.target_triple
-    return "windows" in triple or "mingw" in triple or "msvc" in triple
-
-def _link_shared(
-        *,
-        actions,
-        ada_toolchain,
-        objects,
-        dep_linking_contexts = [],
-        user_link_flags = [],
-        coverage_enabled = False,
-        cc_coverage_link_flags = [],
-        env = {},
-        name):
-    """Create a shared library using GNAT gcc -shared.
+    While `static_libgcc` is disabled the compiler driver links the shared
+    libgcc from its own installation, so the toolchain's `dynamic_runtime_lib`
+    files are symlinked into `<output_name>.runtime_libs/`. The directory is
+    exposed to the link line through `runtime_library_search_directories`
+    when the staged files are passed as `dynamic_runtime_libs`, and the
+    calling rule must put them in its runfiles (and, for a shared library,
+    its default outputs) so they travel with the binary.
 
     Args:
         actions: ctx.actions object.
         ada_toolchain: AdaToolchainInfo provider.
-        objects: list[File] of .o files.
-        dep_linking_contexts: list[CcLinkingContext] from dependencies.
-        user_link_flags: list[str] user linker flags.
-        coverage_enabled: bool whether to add gcov link flags.
-        cc_coverage_link_flags: list[str] extra coverage link flags from
-            the CC toolchain (e.g., LLVM profile runtime on macOS).
-        env: dict[str, str] environment variables for the action.
-        name: str library name (output will be lib{name}.so, .dylib, or .dll).
+        features: list[str] enabled feature names for this link.
+        output_name: str, the package-relative file name of the link output.
 
     Returns:
-        File: the shared library.
+        list[File]: staged libraries; empty when `static_libgcc` is enabled
+            or the toolchain declares none.
     """
-    if _is_windows(ada_toolchain):
-        shared_lib = actions.declare_file(name + ".dll")
-    else:
-        shared_lib = actions.declare_file("lib" + name + ".so")
-    compiler = ada_toolchain.compiler
+    if STATIC_LIBGCC in features:
+        return []
+    staged = []
+    for lib in ada_toolchain.dynamic_runtime_lib:
+        out = actions.declare_file(output_name + _DYNAMIC_RUNTIME_DIR_SUFFIX + "/" + lib.basename)
+        actions.symlink(
+            output = out,
+            target_file = lib,
+            progress_message = "Staging %s for %s" % (lib.basename, output_name),
+        )
+        staged.append(out)
+    return staged
 
-    dep_inputs = _collect_cc_link_inputs(dep_linking_contexts, use_pic = True)
-    dep_flags = dep_inputs.flags
-    if _is_windows(ada_toolchain):
-        dep_flags = _msvc_to_mingw_flags(dep_flags)
-    dep_files = [lib.file for lib in dep_inputs.libs]
-
-    all_link_flags = list(user_link_flags)
-
-    if _is_macos(ada_toolchain):
-        all_link_flags.append("-Wl,-undefined,dynamic_lookup")
-        all_link_flags.append("-Wl,-install_name,@rpath/lib" + name + ".so")
-        all_link_flags.extend(_macos_link_flags(user_link_flags))
-    elif _is_windows(ada_toolchain):
-        all_link_flags.extend(_resolve_link_flags(ada_toolchain))
-    else:
-        all_link_flags.append("-Wl,-soname,lib" + name + ".so")
-
-    if coverage_enabled:
-        all_link_flags.extend(_gcov_link_flags(ada_toolchain))
-        all_link_flags.extend(cc_coverage_link_flags)
-
-    process_wrapper = ada_toolchain.process_wrapper
-
-    args = _new_args(actions)
-    args.add("--")
-    args.add(compiler)
-    args.add("-shared")
-    args.add_all(objects)
-    _add_link_libraries(args, dep_inputs.libs, ada_toolchain)
-    args.add_all(dep_flags)
-    args.add_all(all_link_flags)
-    args.add("-o")
-    args.add(shared_lib)
-
-    actions.run(
-        executable = process_wrapper,
-        arguments = [args],
-        inputs = depset(
-            [compiler] + objects + dep_files + dep_inputs.extra_inputs,
-            transitive = [ada_toolchain.ada_std, ada_toolchain.compiler_lib],
-        ),
-        outputs = [shared_lib],
-        env = env,
-        mnemonic = "AdaLinkShared",
-        progress_message = "Linking shared Ada library %s" % name,
-    )
-    return shared_lib
-
-def _link_executable(
+def _link(
         *,
         actions,
         ada_toolchain,
+        action,
+        output_name,
         objects,
         dep_linking_contexts = [],
         user_link_flags = [],
         link_deps_statically = True,
-        coverage_enabled = False,
-        cc_coverage_link_flags = [],
+        coverage_link_flags = [],
+        macos_deployment_target = None,
+        features = [],
+        dynamic_runtime_libs = [],
         env = {},
         name):
-    """Link Ada object files into an executable using GNAT gcc.
+    """Link an executable or shared library with the toolchain's args.
+
+    The rules contribute only the compiler and the variables below; which
+    flags appear, and in what order, is decided by `ada_toolchain.args` and
+    the arguments of the enabled features.
 
     Args:
         actions: ctx.actions object.
         ada_toolchain: AdaToolchainInfo provider.
-        objects: list[File] of .o files (including binder output).
+        action: str, `link_executable` or `link_shared_library`.
+        output_name: str, package-relative file name of the output (see
+            `artifact_name`).
+        objects: list[File] of .o files.
         dep_linking_contexts: list[CcLinkingContext] from dependencies.
-        user_link_flags: list[str] user linker flags (linkopts).
-        link_deps_statically: bool prefer static linking for deps.
-        coverage_enabled: bool whether to add gcov link flags.
-        cc_coverage_link_flags: list[str] extra coverage link flags from
-            the CC toolchain (e.g., LLVM profile runtime on macOS).
+        user_link_flags: list[str] the target's linkopts.
+        link_deps_statically: bool, prefer static dependency libraries
+            (executables only; shared libraries always take PIC archives).
+        coverage_link_flags: list[str] coverage runtime flags, empty when off.
+        macos_deployment_target: str or None from the CC toolchain.
+        features: list[str] enabled feature names (see features.bzl).
+        dynamic_runtime_libs: list[File] staged beside the output by
+            `_stage_dynamic_runtime_libs`.
         env: dict[str, str] environment variables for the action.
-        name: str output executable name.
+        name: str target name, for messages.
 
     Returns:
-        File: the linked executable.
+        File: the linked output.
     """
-    if _is_windows(ada_toolchain):
-        executable = actions.declare_file(name + ".exe")
-    else:
-        executable = actions.declare_file(name)
+    shared = action == ACTIONS.link_shared_library
+    output = actions.declare_file(output_name)
     compiler = ada_toolchain.compiler
 
-    dep_inputs = _collect_cc_link_inputs(
-        dep_linking_contexts,
-        prefer_static = link_deps_statically,
-    )
-    dep_flags = dep_inputs.flags
-    if _is_windows(ada_toolchain):
-        dep_flags = _msvc_to_mingw_flags(dep_flags)
+    if shared:
+        dep_inputs = _collect_cc_link_inputs(dep_linking_contexts, use_pic = True)
+    else:
+        dep_inputs = _collect_cc_link_inputs(dep_linking_contexts, prefer_static = link_deps_statically)
 
-    all_link_flags = list(user_link_flags) + _resolve_link_flags(ada_toolchain)
-    if _is_macos(ada_toolchain):
-        all_link_flags.extend(_macos_link_flags(user_link_flags))
-    if coverage_enabled:
-        all_link_flags.extend(_gcov_link_flags(ada_toolchain))
-        all_link_flags.extend(cc_coverage_link_flags)
+    # An executable must find its shared dependencies at runtime; a shared
+    # library resolves them through the executable that loads it. Both need
+    # the runtime libraries staged beside them. extra_inputs are checked by
+    # extension for the no-CC-toolchain case, where a shared library can only
+    # travel as a raw path plus input.
+    dynamic_deps = list(dynamic_runtime_libs)
+    if not shared:
+        dynamic_deps = [lib.file for lib in dep_inputs.libs if lib.dynamic] + \
+                       [f for f in dep_inputs.extra_inputs if _is_dynamic_library(f)] + \
+                       dynamic_deps
 
-    all_dep_files = [lib.file for lib in dep_inputs.libs] + dep_inputs.extra_inputs
-
-    # extra_inputs are checked by extension for the no-CC-toolchain case,
-    # where a shared library can only travel as a raw path plus input.
-    dynamic_deps = [lib.file for lib in dep_inputs.libs if lib.dynamic] + \
-                   [f for f in dep_inputs.extra_inputs if _is_dynamic_library(f)]
-
-    # Windows has no rpath: DLLs are found next to the executable or on PATH.
-    if dynamic_deps and not _is_windows(ada_toolchain):
-        all_link_flags.extend(_rpath_flags(executable, dynamic_deps, ada_toolchain))
-
-    process_wrapper = ada_toolchain.process_wrapper
-
-    # GNU ld resolves archives in a single pass, so mutually dependent
-    # archives from C/C++/Rust deps are wrapped in a group. Apple's and
-    # (effectively) MinGW's linkers do not need it.
-    is_elf = not _is_macos(ada_toolchain) and not _is_windows(ada_toolchain)
-    use_group = (dep_inputs.libs or dep_flags) and is_elf
+    variables = {
+        "coverage_link_flags": coverage_link_flags,
+        "dep_link_flags": _normalize_dep_link_flags(dep_inputs.flags),
+        "libraries_to_link": [
+            struct(file = lib.file, whole_archive = lib.alwayslink, dynamic = lib.dynamic)
+            for lib in dep_inputs.libs
+        ],
+        "macos_deployment_target": macos_deployment_target,
+        "objects": objects,
+        "output": output,
+        "output_basename": output.basename,
+        "runtime_libraries": ada_toolchain.static_runtime_lib,
+        "runtime_library_search_directories": _runtime_library_search_directories(output, dynamic_deps),
+        "user_link_flags": user_link_flags,
+    }
 
     args = _new_args(actions)
     args.add("--")
     args.add(compiler)
-    args.add_all(objects)
-    if use_group:
-        args.add("-Wl,--start-group")
-    _add_link_libraries(args, dep_inputs.libs, ada_toolchain)
-    args.add_all(dep_flags)
-    if use_group:
-        args.add("-Wl,--end-group")
-    args.add_all(all_link_flags)
-    args.add("-o")
-    args.add(executable)
+    args.add_all(_toolchain_args(
+        ada_toolchain,
+        action,
+        variables,
+        ada_features.feature_args(ada_toolchain, features),
+    ))
 
     actions.run(
-        executable = process_wrapper,
+        executable = ada_toolchain.process_wrapper,
         arguments = [args],
         inputs = depset(
-            [compiler] + objects + all_dep_files,
-            transitive = [ada_toolchain.ada_std, ada_toolchain.compiler_lib],
+            [compiler] + objects + [lib.file for lib in dep_inputs.libs] +
+            dep_inputs.extra_inputs + ada_toolchain.static_runtime_lib,
+            transitive = [
+                ada_toolchain.ada_std,
+                ada_toolchain.compiler_lib,
+                ada_toolchain.args_files,
+                ada_features.feature_files(ada_toolchain, features),
+            ],
         ),
-        outputs = [executable],
+        outputs = [output],
         env = env,
-        mnemonic = "AdaLink",
-        progress_message = "Linking Ada executable %s" % name,
+        mnemonic = "AdaLinkShared" if shared else "AdaLink",
+        progress_message = "Linking %s %s" % ("shared Ada library" if shared else "Ada executable", name),
     )
-    return executable
+    return output
 
 ada_common = struct(
     compile_interface = _compile_interface,
@@ -877,9 +773,9 @@ ada_common = struct(
     bind = _bind,
     bind_library = _bind_library,
     archive = _archive,
-    link_shared = _link_shared,
-    link_executable = _link_executable,
-    resolve_link_flags = _resolve_link_flags,
+    link = _link,
+    stage_dynamic_runtime_libs = _stage_dynamic_runtime_libs,
+    artifact_name = _artifact_name,
     is_dynamic_library = _is_dynamic_library,
     gcov_link_flags = _gcov_link_flags,
     create_linker_input = cc_common.create_linker_input,

@@ -1,0 +1,70 @@
+"""Link line for ELF targets linked by GNU ld (Linux)."""
+
+load("//ada/toolchains:defs.bzl", "ACTIONS", "LINK_ACTIONS", "ada_args", "ada_args_list")
+
+package(default_visibility = ["//visibility:public"])
+
+# GNU ld resolves archives in a single pass, so mutually dependent archives
+# from C/C++/Rust deps are wrapped in a group. Only emitted when there are
+# libraries to wrap.
+ada_args(
+    name = "start_group",
+    actions = [ACTIONS.link_executable],
+    args = ["-Wl,--start-group"],
+    requires_not_none = "libraries_to_link",
+)
+
+ada_args(
+    name = "end_group",
+    actions = [ACTIONS.link_executable],
+    args = ["-Wl,--end-group"],
+    requires_not_none = "libraries_to_link",
+)
+
+ada_args(
+    name = "soname",
+    actions = [ACTIONS.link_shared_library],
+    args = ["-Wl,-soname,{output_basename}"],
+)
+
+# One rpath per directory a shared dependency or staged runtime library
+# lives in, relative to the output.
+ada_args(
+    name = "runtime_library_search_directories",
+    actions = LINK_ACTIONS,
+    args = ["-Wl,-rpath,$ORIGIN/{runtime_library_search_directories}"],
+    iterate_over = "runtime_library_search_directories",
+)
+
+# System libraries the GNAT runtime needs that gnatlink would normally add
+# from the binder's option list (which rules_ada scrubs): libm for
+# Ada.Numerics, and on glibc older than 2.34 (RHEL 8, Ubuntu 20.04) the
+# then-separate pthread/dl/rt libraries. Harmless on newer glibc.
+ada_args(
+    name = "linux_system_libs",
+    actions = LINK_ACTIONS,
+    args = [
+        "-lm",
+        "-lpthread",
+        "-ldl",
+        "-lrt",
+    ],
+)
+
+ada_args_list(
+    name = "link_line",
+    args = [
+        "//ada/toolchains/args:shared_flag",
+        "//ada/toolchains/args:objects",
+        ":start_group",
+        "//ada/toolchains/args:gnu_libraries_to_link",
+        "//ada/toolchains/args:dep_link_flags",
+        ":end_group",
+        "//ada/toolchains/args:user_link_flags",
+        ":soname",
+        "//ada/toolchains/args:runtime_libraries",
+        "//ada/toolchains/args:coverage_link_flags",
+        ":runtime_library_search_directories",
+        "//ada/toolchains/args:output",
+    ],
+)

@@ -65,12 +65,52 @@ stardoc(
     deps = ["//ada:ada_toolchain_bzl"],
 )
 
+stardoc(
+    name = "ada_args",
+    out = "src/ada_args.md",
+    input = "//ada/toolchains:args.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada/toolchains:args_bzl"],
+)
+
+stardoc(
+    name = "ada_args_list",
+    out = "src/ada_args_list.md",
+    input = "//ada/toolchains:args_list.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada/toolchains:args_list_bzl"],
+)
+
+stardoc(
+    name = "ada_feature",
+    out = "src/ada_feature.md",
+    input = "//ada/toolchains:feature.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada/toolchains:feature_bzl"],
+)
+
+stardoc(
+    name = "ada_nested_args",
+    out = "src/ada_nested_args.md",
+    input = "//ada/toolchains:nested_args.bzl",
+    table_of_contents_template = "@stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ada/toolchains:nested_args_bzl"],
+)
+
 mdbook(
     name = "book",
     srcs = glob(["src/**/*.md"]) + [
+        ":ada_args",
+        ":ada_args_list",
         ":ada_binary",
+        ":ada_feature",
         ":ada_info",
         ":ada_library",
+        ":ada_nested_args",
         ":ada_shared_library",
         ":ada_static_library",
         ":ada_test",

@@ -3,6 +3,11 @@ load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
 load("//ada:defs.bzl", "ada_binary")
 load(":shared_library_test_suite.bzl", "shared_library_test_suite")
 
+_NOT_WINDOWS = select({
+    "@platforms//os:windows": ["@platforms//:incompatible"],
+    "//conditions:default": [],
+})
+
 ada_binary(
     name = "main",
     srcs = ["main.adb"],
@@ -18,10 +23,7 @@ run_binary(
     name = "main_output",
     outs = ["main.output"],
     args = ["$(execpath main.output)"],
-    target_compatible_with = select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
+    target_compatible_with = _NOT_WINDOWS,
     tool = ":main",
 )
 
@@ -29,10 +31,34 @@ diff_test(
     name = "main_test",
     file1 = "main.expected",
     file2 = "main.output",
-    target_compatible_with = select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
+    target_compatible_with = _NOT_WINDOWS,
+)
+
+# Same program with the `static_libgcc` feature disabled. The hermetic macOS
+# toolchain then stages its libgcc_s into `main_dynamic_libgcc.runtime_libs/`
+# behind an @loader_path rpath; running it below proves dyld finds the staged
+# copy. Elsewhere the toolchain declares nothing to stage.
+ada_binary(
+    name = "main_dynamic_libgcc",
+    srcs = ["main.adb"],
+    features = ["-static_libgcc"],
+    linkstatic = False,
+    deps = ["//tests/shared_library/lib:math_ops_dynamic_libgcc"],
+)
+
+run_binary(
+    name = "main_dynamic_libgcc_output",
+    outs = ["main_dynamic_libgcc.output"],
+    args = ["$(execpath main_dynamic_libgcc.output)"],
+    target_compatible_with = _NOT_WINDOWS,
+    tool = ":main_dynamic_libgcc",
+)
+
+diff_test(
+    name = "main_dynamic_libgcc_test",
+    file1 = "main.expected",
+    file2 = "main_dynamic_libgcc.output",
+    target_compatible_with = _NOT_WINDOWS,
 )
 
 shared_library_test_suite(name = "shared_library_test_suite")

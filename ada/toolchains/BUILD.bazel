@@ -1,0 +1,58 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+exports_files([
+    "actions.bzl",
+    "args.bzl",
+    "args_list.bzl",
+    "defs.bzl",
+    "feature.bzl",
+    "nested_args.bzl",
+])
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = ["defs.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":actions_bzl",
+        ":args_bzl",
+        ":args_list_bzl",
+        ":feature_bzl",
+        ":nested_args_bzl",
+    ],
+)
+
+bzl_library(
+    name = "actions_bzl",
+    srcs = ["actions.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//ada/private:bzl_lib"],
+)
+
+bzl_library(
+    name = "args_bzl",
+    srcs = ["args.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//ada/private:bzl_lib"],
+)
+
+bzl_library(
+    name = "args_list_bzl",
+    srcs = ["args_list.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//ada/private:bzl_lib"],
+)
+
+bzl_library(
+    name = "feature_bzl",
+    srcs = ["feature.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//ada/private:bzl_lib"],
+)
+
+bzl_library(
+    name = "nested_args_bzl",
+    srcs = ["nested_args.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//ada/private:bzl_lib"],
+)

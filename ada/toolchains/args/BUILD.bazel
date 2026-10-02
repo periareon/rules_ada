@@ -1,0 +1,125 @@
+"""Platform-neutral building blocks of a link line.
+
+The per-family packages (`elf`, `darwin`, `windows`) assemble these into a
+complete `link_line`; a custom toolchain can do the same.
+"""
+
+load("//ada/toolchains:defs.bzl", "ACTIONS", "LINK_ACTIONS", "ada_args", "ada_nested_args")
+
+package(default_visibility = ["//visibility:public"])
+
+ada_args(
+    name = "shared_flag",
+    actions = [ACTIONS.link_shared_library],
+    args = ["-shared"],
+)
+
+ada_args(
+    name = "objects",
+    actions = LINK_ACTIONS,
+    args = ["{objects}"],
+    requires_not_none = "objects",
+)
+
+# Dependency libraries for GNU ld style linkers. Archives marked alwayslink
+# (cc_library(alwayslink = True)) are linked in full so that unreferenced
+# members such as constructors survive.
+ada_args(
+    name = "gnu_libraries_to_link",
+    actions = LINK_ACTIONS,
+    iterate_over = "libraries_to_link",
+    nested = [
+        ":whole_archive_start",
+        ":library_file",
+        ":whole_archive_end",
+    ],
+)
+
+ada_nested_args(
+    name = "whole_archive_start",
+    args = ["-Wl,--whole-archive"],
+    requires_true = "libraries_to_link.whole_archive",
+)
+
+ada_nested_args(
+    name = "library_file",
+    args = ["{libraries_to_link.file}"],
+)
+
+ada_nested_args(
+    name = "whole_archive_end",
+    args = ["-Wl,--no-whole-archive"],
+    requires_true = "libraries_to_link.whole_archive",
+)
+
+# The same for Apple's linker, which takes -force_load per archive.
+ada_args(
+    name = "darwin_libraries_to_link",
+    actions = LINK_ACTIONS,
+    iterate_over = "libraries_to_link",
+    nested = [
+        ":force_load_library",
+        ":plain_library",
+    ],
+)
+
+ada_nested_args(
+    name = "force_load_library",
+    args = ["-Wl,-force_load,{libraries_to_link.file}"],
+    requires_true = "libraries_to_link.whole_archive",
+)
+
+ada_nested_args(
+    name = "plain_library",
+    args = ["{libraries_to_link.file}"],
+    requires_false = "libraries_to_link.whole_archive",
+)
+
+# Link flags contributed by dependencies (cc_library linkopts and the like).
+ada_args(
+    name = "dep_link_flags",
+    actions = LINK_ACTIONS,
+    args = ["{dep_link_flags}"],
+    requires_not_none = "dep_link_flags",
+)
+
+# The target's own linkopts.
+ada_args(
+    name = "user_link_flags",
+    actions = LINK_ACTIONS,
+    args = ["{user_link_flags}"],
+    requires_not_none = "user_link_flags",
+)
+
+# The toolchain's static_runtime_lib, after the dependencies as cc_binary
+# orders toolchain libraries. Executables always need the runtime; shared
+# libraries only on platforms whose loader rejects undefined symbols.
+ada_args(
+    name = "runtime_libraries",
+    actions = [ACTIONS.link_executable],
+    args = ["{runtime_libraries}"],
+    requires_not_none = "runtime_libraries",
+)
+
+ada_args(
+    name = "shared_library_runtime_libraries",
+    actions = [ACTIONS.link_shared_library],
+    args = ["{runtime_libraries}"],
+    requires_not_none = "runtime_libraries",
+)
+
+ada_args(
+    name = "coverage_link_flags",
+    actions = LINK_ACTIONS,
+    args = ["{coverage_link_flags}"],
+    requires_not_none = "coverage_link_flags",
+)
+
+ada_args(
+    name = "output",
+    actions = LINK_ACTIONS,
+    args = [
+        "-o",
+        "{output}",
+    ],
+)
