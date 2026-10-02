@@ -40,10 +40,15 @@ ada_toolchain(
     compiler = "{compiler}",
     binder = "{binder}",
     ar = {ar},
-    gcov = "{gcov}",
+    gcov = {gcov},
     ada_std = ":ada_std",
     compiler_lib = ":compiler_lib",
-    link_flags = [{link_flags}],
+    static_runtime_lib = [{static_runtime_lib}],
+    dynamic_runtime_lib = [{dynamic_runtime_lib}],
+    args = [{args}],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    enabled_features = [{enabled_features}],
+    artifact_name_patterns = {{{artifact_name_patterns}}},
     target_triple = "{target_triple}",
     visibility = ["//visibility:public"],
 )
@@ -78,13 +83,11 @@ def _find_runtime_paths(repository_ctx):
     if not adalib_rel:
         fail("Could not find adalib directory in GNAT archive")
 
-    def _find_tool(base, candidates = None):
-        """Find a tool binary, checking for .exe suffix on Windows."""
-        names = candidates or [base]
-        for name in names:
-            for ext in ["", ".exe"]:
-                if repository_ctx.path(name + ext).exists:
-                    return name + ext
+    def _find_tool(name):
+        """Find a tool binary, checking for the .exe suffix on Windows."""
+        for ext in ["", ".exe"]:
+            if repository_ctx.path(name + ext).exists:
+                return name + ext
         return None
 
     compiler_path = _find_tool("bin/gcc")
@@ -110,6 +113,10 @@ def _find_runtime_paths(repository_ctx):
         gcov = gcov_path,
     )
 
+def _quoted(items):
+    """Render a list of strings as the body of a BUILD list literal."""
+    return ", ".join(['"%s"' % item for item in items])
+
 def _gnat_repository_impl(repository_ctx):
     repository_ctx.download_and_extract(
         url = repository_ctx.attr.urls,
@@ -119,32 +126,71 @@ def _gnat_repository_impl(repository_ctx):
 
     rt = _find_runtime_paths(repository_ctx)
 
+    platform = repository_ctx.attr.platform
+
     # Static archives are scanned once, in order, by GNU ld: libgnarl (the
     # tasking runtime) references symbols in libgnat, so it must come first.
-    # This is the order gnatlink uses (-lgnarl -lgnat).
-    link_flags = [
-        '"%s/libgnarl.a"' % rt.adalib,
-        '"%s/libgnat.a"' % rt.adalib,
-        '"%s/libgcc.a"' % rt.gcc_lib,
+    # This is the order gnatlink uses (-lgnarl -lgnat). The list is explicit
+    # on purpose: a glob would sort libgcc.a first.
+    static_runtime_lib = [
+        "%s/libgnarl.a" % rt.adalib,
+        "%s/libgnat.a" % rt.adalib,
+        "%s/libgcc.a" % rt.gcc_lib,
     ]
+    for archive in static_runtime_lib:
+        if not repository_ctx.path(archive).exists:
+            fail("GNAT archive is missing the runtime library %s" % archive)
 
-    # libatomic.a is needed on aarch64 for outline atomics
-    libatomic = repository_ctx.path("lib/libatomic.a")
-    if libatomic.exists:
-        link_flags.append('"lib/libatomic.a"')
+    # libatomic.a, shipped by the aarch64 toolchains, is needed for outline
+    # atomics.
+    if repository_ctx.path("lib/libatomic.a").exists:
+        static_runtime_lib.append("lib/libatomic.a")
 
-    # System libraries the GNAT runtime needs that gnatlink would normally
-    # add from the binder's option list (which rules_ada scrubs): libm for
-    # Ada.Numerics, and on glibc older than 2.34 (RHEL 8, Ubuntu 20.04) the
-    # then-separate pthread/dl/rt libraries.  Harmless on newer glibc.
-    if "linux" in repository_ctx.attr.platform:
-        link_flags.extend(['"-lm"', '"-lpthread"', '"-ldl"', '"-lrt"'])
+    dynamic_runtime_lib = []
+    artifact_name_patterns = {}
 
-    # On macOS, GNAT's gcc has a hardcoded --sysroot fallback that only
-    # works for the SDK version it was built against. Use a placeholder
-    # resolved by process_wrapper from SDKROOT env var at execution time.
-    if "darwin" in repository_ctx.attr.platform:
-        link_flags.append('"--sysroot=__BAZEL_XCODE_SDKROOT__"')
+    # The hermetic toolchains follow gnatlink wherever doing so keeps outputs
+    # reproducible across machines and free of build-host dependencies; each
+    # departure below says what gnatlink does instead. See "Differences from
+    # gnatlink" in docs/src/toolchains.md.
+    #
+    # libgcc is linked statically on every platform. That is gnatlink's own
+    # default on Linux and Windows and keeps binaries off the host's
+    # libgcc_s. On macOS gnatlink defaults to the shared libgcc_s.1.1.dylib
+    # found through absolute rpaths into the GNAT installation, a shape that
+    # is neither reproducible nor relocatable; the unwinder is libSystem's
+    # either way, so nothing is lost. A target that needs the shared libgcc
+    # (one unwinder shared with dlopen'd C++ or JIT code) disables the
+    # feature and, on macOS, gets the dylib staged next to it.
+    enabled_features = ["@rules_ada//ada/toolchains/features:static_libgcc"]
+
+    # The link line comes from the arg sets rules_ada ships per platform
+    # family; see ada/toolchains/args/*/BUILD.bazel for what each flag does.
+    if "linux" in platform:
+        args = [
+            "@rules_ada//ada/toolchains/args/elf:link_line",
+            "@rules_ada//ada/toolchains/args/elf:linux_system_libs",
+        ]
+    elif "darwin" in platform:
+        # gnatlink leaves the driver's absolute rpaths and deployment target
+        # alone; nodefaultrpaths drops the former for reproducibility and the
+        # link line mirrors the C/C++ toolchain's deployment target so Ada
+        # and C/C++ objects agree.
+        args = [
+            "@rules_ada//ada/toolchains/args/darwin:link_line",
+            "@rules_ada//ada/toolchains/args/darwin:sysroot_from_env",
+            "@rules_ada//ada/toolchains/args/darwin:nodefaultrpaths",
+        ]
+        if repository_ctx.path("lib/libgcc_s.1.1.dylib").exists:
+            dynamic_runtime_lib.append("lib/libgcc_s.1.1.dylib")
+    elif "windows" in platform:
+        args = ["@rules_ada//ada/toolchains/args/windows:link_line"]
+        artifact_name_patterns = {
+            "executable": "%{name}.exe",
+            "shared_library": "%{name}.dll",
+        }
+    else:
+        fail("Unsupported platform %s" % platform)
 
     repository_ctx.file("BUILD.bazel", _GNAT_TOOLCHAIN_BUILD_TEMPLATE.format(
         adalib = rt.adalib,
@@ -152,8 +198,12 @@ def _gnat_repository_impl(repository_ctx):
         compiler = rt.compiler,
         binder = rt.binder,
         ar = "\"{}\"".format(rt.ar) if rt.ar else "None",
-        gcov = rt.gcov or rt.compiler.replace("gcc", "gcov"),
-        link_flags = ", ".join(link_flags),
+        gcov = "\"{}\"".format(rt.gcov) if rt.gcov else "None",
+        static_runtime_lib = _quoted(static_runtime_lib),
+        dynamic_runtime_lib = _quoted(dynamic_runtime_lib),
+        args = _quoted(args),
+        enabled_features = _quoted(enabled_features),
+        artifact_name_patterns = ", ".join(['"%s": "%s"' % kv for kv in artifact_name_patterns.items()]),
         target_triple = rt.target_triple,
     ))
 

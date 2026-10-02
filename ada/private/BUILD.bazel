@@ -5,10 +5,12 @@ bzl_library(
     srcs = glob(["*.bzl"]),
     visibility = [
         "//ada:__pkg__",
-        "//tests:__subpackages__",
+        "//ada/settings:__pkg__",
+        "//ada/toolchains:__pkg__",
     ],
     deps = [
         "@bazel_skylib//lib:paths",
+        "@rules_cc//cc:action_names_bzl",
         "@rules_cc//cc/common",
     ],
 )

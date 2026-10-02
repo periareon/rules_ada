@@ -1,0 +1,72 @@
+"""Link line for macOS targets linked by Apple's ld through GCC's Darwin driver."""
+
+load("//ada/toolchains:defs.bzl", "ACTIONS", "LINK_ACTIONS", "ada_args", "ada_args_list")
+
+package(default_visibility = ["//visibility:public"])
+
+# Shared libraries resolve the Ada runtime from the executable that loads
+# them rather than carrying a second copy.
+ada_args(
+    name = "undefined_dynamic_lookup",
+    actions = [ACTIONS.link_shared_library],
+    args = ["-Wl,-undefined,dynamic_lookup"],
+)
+
+ada_args(
+    name = "install_name",
+    actions = [ACTIONS.link_shared_library],
+    args = ["-Wl,-install_name,@rpath/{output_basename}"],
+)
+
+# The deployment target of the C/C++ toolchain, when one is configured, so
+# the output agrees with the objects it links and ld stops warning about
+# objects "built for newer macOS version than being linked".
+ada_args(
+    name = "macos_deployment_target",
+    actions = LINK_ACTIONS,
+    args = ["-mmacosx-version-min={macos_deployment_target}"],
+    requires_not_none = "macos_deployment_target",
+)
+
+ada_args(
+    name = "runtime_library_search_directories",
+    actions = LINK_ACTIONS,
+    args = ["-Wl,-rpath,@loader_path/{runtime_library_search_directories}"],
+    iterate_over = "runtime_library_search_directories",
+)
+
+# GNAT's gcc has a hardcoded --sysroot fallback that only works for the SDK
+# it was built against. The placeholder is resolved by process_wrapper from
+# the SDKROOT environment variable at execution time.
+ada_args(
+    name = "sysroot_from_env",
+    actions = LINK_ACTIONS,
+    args = ["--sysroot=__BAZEL_XCODE_SDKROOT__"],
+)
+
+# Without it the driver records absolute rpaths to its own lib/ directories,
+# i.e. into the output base that ran the link, and a cached binary only
+# loads on the machine that linked it.
+ada_args(
+    name = "nodefaultrpaths",
+    actions = LINK_ACTIONS,
+    args = ["-nodefaultrpaths"],
+)
+
+ada_args_list(
+    name = "link_line",
+    args = [
+        "//ada/toolchains/args:shared_flag",
+        "//ada/toolchains/args:objects",
+        "//ada/toolchains/args:darwin_libraries_to_link",
+        "//ada/toolchains/args:dep_link_flags",
+        "//ada/toolchains/args:user_link_flags",
+        ":undefined_dynamic_lookup",
+        ":install_name",
+        "//ada/toolchains/args:runtime_libraries",
+        ":macos_deployment_target",
+        "//ada/toolchains/args:coverage_link_flags",
+        ":runtime_library_search_directories",
+        "//ada/toolchains/args:output",
+    ],
+)

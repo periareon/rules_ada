@@ -1,0 +1,25 @@
+"""Link line for Windows targets linked by MinGW's GNU ld.
+
+A DLL cannot have undefined symbols, so shared libraries carry the runtime
+archives too. Windows has no rpath: DLLs are found next to the executable or
+on PATH.
+"""
+
+load("//ada/toolchains:defs.bzl", "ada_args_list")
+
+package(default_visibility = ["//visibility:public"])
+
+ada_args_list(
+    name = "link_line",
+    args = [
+        "//ada/toolchains/args:shared_flag",
+        "//ada/toolchains/args:objects",
+        "//ada/toolchains/args:gnu_libraries_to_link",
+        "//ada/toolchains/args:dep_link_flags",
+        "//ada/toolchains/args:user_link_flags",
+        "//ada/toolchains/args:runtime_libraries",
+        "//ada/toolchains/args:shared_library_runtime_libraries",
+        "//ada/toolchains/args:coverage_link_flags",
+        "//ada/toolchains/args:output",
+    ],
+)

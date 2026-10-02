@@ -10,3 +10,15 @@ ada_shared_library(
     ],
     visibility = ["//tests/shared_library:__pkg__"],
 )
+
+# The same library with the `static_libgcc` feature disabled; see the parent
+# package.
+ada_shared_library(
+    name = "math_ops_dynamic_libgcc",
+    srcs = [
+        "math_ops.adb",
+        "math_ops.ads",
+    ],
+    features = ["-static_libgcc"],
+    visibility = ["//tests/shared_library:__pkg__"],
+)

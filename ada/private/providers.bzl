@@ -35,35 +35,49 @@ def merge_ada_infos(deps):
 def _ada_toolchain_info_init(
         ada_std,
         ar,
+        args,
+        args_files,
+        artifact_name_patterns,
         bind_flags,
         binder,
         compile_flags,
         compiler,
         compiler_id,
         compiler_lib,
+        dynamic_runtime_lib,
+        enabled_features,
         gcov,
+        known_features,
         label,
-        link_flags,
         process_wrapper,
+        static_runtime_lib,
         target_triple):
     """AdaToolchainInfo constructor."""
 
     if process_wrapper.owner != Label("//ada/private/process_wrapper"):
         fail("AdaToolchainInfo.process_wrapper must be set to `Label(\"@rules_ada//ada/private/process_wrapper\")`")
+    if type(static_runtime_lib) != "list" or type(dynamic_runtime_lib) != "list":
+        fail("AdaToolchainInfo.static_runtime_lib and dynamic_runtime_lib must be lists of File (link order matters)")
 
     return {
         "ada_std": ada_std,
         "ar": ar,
+        "args": args,
+        "args_files": args_files,
+        "artifact_name_patterns": artifact_name_patterns,
         "bind_flags": bind_flags,
         "binder": binder,
         "compile_flags": compile_flags,
         "compiler": compiler,
         "compiler_id": compiler_id,
         "compiler_lib": compiler_lib,
+        "dynamic_runtime_lib": dynamic_runtime_lib,
+        "enabled_features": enabled_features,
         "gcov": gcov,
+        "known_features": known_features,
         "label": label,
-        "link_flags": link_flags,
         "process_wrapper": process_wrapper,
+        "static_runtime_lib": static_runtime_lib,
         "target_triple": target_triple,
     }
 
@@ -72,17 +86,23 @@ AdaToolchainInfo, _new_ada_toolchain_info = provider(
     fields = {
         "ada_std": "depset[File]: Ada standard library (adalib .ali and .a files, adainclude specs).",
         "ar": "File or None: The archiver executable. None when the GNAT archive does not include one; the CC toolchain's archiver is used as a fallback.",
+        "args": "tuple[AdaArgsInfo]: Arguments expanded into every action, in command-line order.",
+        "args_files": "depset[File]: Files referenced by `args`, added to every action's inputs.",
+        "artifact_name_patterns": "dict[str, str]: Output file name pattern per category (`executable`, `shared_library`, `static_library`) with `%{name}` for the target name.",
         "bind_flags": "list[str]: Toolchain-level binder flags.",
         "binder": "File: The gnatbind executable for elaboration ordering.",
         "compile_flags": "list[str]: Toolchain-level compile flags.",
         "compiler": "File: The Ada compiler executable (gcc with GNAT support).",
         "compiler_id": "str: Compiler identifier (e.g., 'gnat').",
         "compiler_lib": "depset[File]: GCC support files (backends, shared libs, runtime libs).",
+        "dynamic_runtime_lib": "list[File]: Shared runtime libraries staged beside each linked output when the `static_libgcc` feature is disabled (e.g. libgcc_s.1.1.dylib).",
+        "enabled_features": "tuple[AdaFeatureInfo]: Features on by default for every target using this toolchain.",
         "gcov": "File: The gcov executable for coverage, or None.",
+        "known_features": "tuple[AdaFeatureInfo]: Features the toolchain understands, in the order their arguments are emitted.",
         "label": "Label: The label of the toolchain target.",
-        "link_flags": "list[str]: Toolchain-level link flags.",
         "process_wrapper": "File: The process wrapper executable for build actions.",
-        "target_triple": "str: GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').",
+        "static_runtime_lib": "list[File]: Runtime archives in link order (libgnarl.a, libgnat.a, libgcc.a, ...), linked into executables and Windows shared libraries after the dependency libraries.",
+        "target_triple": "str: GCC target triple (e.g., 'aarch64-apple-darwin24.6.0', 'x86_64-pc-linux-gnu'). Informational; no rule behaviour depends on it.",
     },
     init = _ada_toolchain_info_init,
 )
