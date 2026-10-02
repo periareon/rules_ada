@@ -161,23 +161,39 @@
 <ul>
 <li><a href="#ada_toolchain">ada_toolchain</a></li>
 </ul>
+<h2 id="providers"><a class="header" href="#providers">Providers</a></h2>
+<ul>
+<li><a href="#AdaToolchainInfo">AdaToolchainInfo</a></li>
+</ul>
 <p><a id="ada_toolchain"></a></p>
 <h2 id="ada_toolchain-1"><a class="header" href="#ada_toolchain-1">ada_toolchain</a></h2>
 <pre>
 load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
-ada_toolchain(<a href="#ada_toolchain-name">name</a>, <a href="#ada_toolchain-ada_std">ada_std</a>, <a href="#ada_toolchain-ar">ar</a>, <a href="#ada_toolchain-bind_flags">bind_flags</a>, <a href="#ada_toolchain-binder">binder</a>, <a href="#ada_toolchain-compile_flags">compile_flags</a>, <a href="#ada_toolchain-compiler">compiler</a>, <a href="#ada_toolchain-compiler_id">compiler_id</a>,
-              <a href="#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="#ada_toolchain-gcov">gcov</a>, <a href="#ada_toolchain-link_flags">link_flags</a>, <a href="#ada_toolchain-target_triple">target_triple</a>)
+ada_toolchain(<a href="#ada_toolchain-name">name</a>, <a href="#ada_toolchain-ada_std">ada_std</a>, <a href="#ada_toolchain-ar">ar</a>, <a href="#ada_toolchain-args">args</a>, <a href="#ada_toolchain-artifact_name_patterns">artifact_name_patterns</a>, <a href="#ada_toolchain-bind_flags">bind_flags</a>, <a href="#ada_toolchain-binder">binder</a>, <a href="#ada_toolchain-compile_flags">compile_flags</a>,
+              <a href="#ada_toolchain-compiler">compiler</a>, <a href="#ada_toolchain-compiler_id">compiler_id</a>, <a href="#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="#ada_toolchain-dynamic_runtime_lib">dynamic_runtime_lib</a>, <a href="#ada_toolchain-enabled_features">enabled_features</a>, <a href="#ada_toolchain-gcov">gcov</a>,
+              <a href="#ada_toolchain-known_features">known_features</a>, <a href="#ada_toolchain-static_runtime_lib">static_runtime_lib</a>, <a href="#ada_toolchain-target_triple">target_triple</a>)
 </pre>
-<p>Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
-archiver (ar), and compilation/linking flags.</p>
-<p>The toolchains shipped with <code>rules_ada</code> are created by its module extension;
-this rule is only needed to use a GNAT installation of your own.</p>
-<p><code>link_flags</code> entries that are plain relative paths (not starting with <code>-</code> or
-<code>/</code>) and <code>-L</code> directories are resolved against the toolchain repository
-root, which is taken to be the parent of the compiler's <code>bin/</code> directory.
-The GNAT runtime archives must be listed explicitly, tasking runtime first:</p>
+<p>Defines an Ada toolchain: the GNAT compiler (gcc), binder (gnatbind) and
+archiver (ar), the runtime libraries, and the arguments every action is
+built from.</p>
+<p>The hermetic-gnat toolchains shipped with <code>rules_ada</code> are created and
+registered by its module extension; this rule is only needed to define a custom
+toolchain around a GNAT installation that <code>rules_ada</code> does not ship.</p>
+<p>How the toolchain builds its command lines is declared with
+<a href="./ada_args.html"><code>ada_args</code></a> targets listed in <code>args</code>; <code>rules_ada</code> ships
+complete link lines per platform family under
+<code>@rules_ada//ada/toolchains/args/...</code> that can be reused, extended or
+replaced. The GNAT runtime archives are listed in <code>static_runtime_lib</code>,
+tasking runtime first:</p>
 <pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
+load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "system_libs",
+    actions = LINK_ACTIONS,
+    args = ["-lm", "-lpthread", "-ldl", "-lrt"],
+)
 
 ada_toolchain(
     name = "gnat_toolchain",
@@ -188,28 +204,74 @@ ada_toolchain(
     compiler_lib = "@gnat//:compiler_lib",
     gcov = "@gnat//:bin/gcov",
     compile_flags = ["-O2"],
-    link_flags = [
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    static_runtime_lib = [
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
     ],
+    args = [
+        "@rules_ada//ada/toolchains/args/elf:link_line",
+        ":system_libs",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
     target_triple = "x86_64-pc-linux-gnu",
 )
 </code></pre>
+<p>See the toolchains documentation for the variables available to <code>ada_args</code>,
+the shipped link lines, features and <code>dynamic_runtime_lib</code>.</p>
 <p><strong>ATTRIBUTES</strong></p>
 <div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
 <tr><td style="text-align: left"><a id="ada_toolchain-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-ada_std"></a>ada_std</td><td style="text-align: left">The Ada standard library (<code>adalib</code> and <code>adainclude</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-ar"></a>ar</td><td style="text-align: left">The archiver executable (<code>ar</code> or <code>gcc-ar</code>). If not set, the CC toolchain's archiver is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-args"></a>args</td><td style="text-align: left"><code>ada_args</code> and <code>ada_args_list</code> targets expanded, in this order, into every action they apply to. A link line is built entirely from these; see <code>@rules_ada//ada/toolchains/args/...</code> for the shipped ones.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-artifact_name_patterns"></a>artifact_name_patterns</td><td style="text-align: left">Output file name per category with <code>%{name}</code> standing for the target name. Categories: <code>executable</code> (default <code>%{name}</code>), <code>shared_library</code> (<code>lib%{name}.so</code>), <code>static_library</code> (<code>lib%{name}.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/rules/lib/core/dict">Dictionary: String -&gt; String</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>{}</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-bind_flags"></a>bind_flags</td><td style="text-align: left">Additional flags for <code>gnatbind</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-binder"></a>binder</td><td style="text-align: left">The <code>gnatbind</code> executable for elaboration ordering and consistency checking.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compile_flags"></a>compile_flags</td><td style="text-align: left">Additional compiler flags for Ada compilation.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler"></a>compiler</td><td style="text-align: left">The Ada compiler executable (gcc with GNAT support).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_id"></a>compiler_id</td><td style="text-align: left">Identifier for the Ada compiler. Currently only 'gnat' is supported.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>"gnat"</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_lib"></a>compiler_lib</td><td style="text-align: left">GCC support files (backends, shared libs, runtime libs like <code>libgcc.a</code>, <code>libatomic.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-dynamic_runtime_lib"></a>dynamic_runtime_lib</td><td style="text-align: left">Shared runtime libraries the compiler driver links implicitly when the <code>static_libgcc</code> feature is disabled (e.g. macOS <code>libgcc_s.1.1.dylib</code>). They are staged next to each linked output with a relative rpath and carried in its runfiles. Leave empty where the system provides them, as on Linux.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-enabled_features"></a>enabled_features</td><td style="text-align: left"><code>ada_feature</code> targets on by default for every target using this toolchain; each must also be in <code>known_features</code>. A target turns one off with <code>features = ["-name"]</code>.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-gcov"></a>gcov</td><td style="text-align: left">The gcov executable for coverage support.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Linker flags added to every executable and (on Windows) shared library link. Relative paths and <code>-L</code> directories are resolved against the toolchain repository root; list the GNAT runtime archives here (<code>libgnarl.a</code> before <code>libgnat.a</code>, then <code>libgcc.a</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-known_features"></a>known_features</td><td style="text-align: left"><code>ada_feature</code> targets the toolchain understands. The arguments of enabled ones are emitted after <code>args</code>, in this order. <code>@rules_ada//ada/toolchains/features:static_libgcc</code> is the one the rules themselves know.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-static_runtime_lib"></a>static_runtime_lib</td><td style="text-align: left">Runtime archives linked, in this order, after the dependency libraries into every executable and (on Windows) shared library: <code>libgnarl.a</code> first, then <code>libgnat.a</code>, <code>libgcc.a</code>, and <code>libatomic.a</code> where needed. GNU ld scans archives once, so the order matters.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin24.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+</tbody></table>
+</div>
+<p><a id="AdaToolchainInfo"></a></p>
+<h2 id="adatoolchaininfo"><a class="header" href="#adatoolchaininfo">AdaToolchainInfo</a></h2>
+<pre>
+load("@rules_ada//ada:ada_toolchain.bzl", "AdaToolchainInfo")
+
+AdaToolchainInfo(<a href="#AdaToolchainInfo-ada_std">ada_std</a>, <a href="#AdaToolchainInfo-ar">ar</a>, <a href="#AdaToolchainInfo-args">args</a>, <a href="#AdaToolchainInfo-args_files">args_files</a>, <a href="#AdaToolchainInfo-artifact_name_patterns">artifact_name_patterns</a>, <a href="#AdaToolchainInfo-bind_flags">bind_flags</a>, <a href="#AdaToolchainInfo-binder">binder</a>,
+                 <a href="#AdaToolchainInfo-compile_flags">compile_flags</a>, <a href="#AdaToolchainInfo-compiler">compiler</a>, <a href="#AdaToolchainInfo-compiler_id">compiler_id</a>, <a href="#AdaToolchainInfo-compiler_lib">compiler_lib</a>, <a href="#AdaToolchainInfo-dynamic_runtime_lib">dynamic_runtime_lib</a>,
+                 <a href="#AdaToolchainInfo-enabled_features">enabled_features</a>, <a href="#AdaToolchainInfo-gcov">gcov</a>, <a href="#AdaToolchainInfo-known_features">known_features</a>, <a href="#AdaToolchainInfo-label">label</a>, <a href="#AdaToolchainInfo-process_wrapper">process_wrapper</a>, <a href="#AdaToolchainInfo-static_runtime_lib">static_runtime_lib</a>,
+                 <a href="#AdaToolchainInfo-target_triple">target_triple</a>)
+</pre>
+<p>Information about a configured Ada toolchain.</p>
+<p><strong>FIELDS</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-ada_std"></a>ada_std</td><td style="text-align: left">depset[File]: Ada standard library (adalib .ali and .a files, adainclude specs).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-ar"></a>ar</td><td style="text-align: left">File or None: The archiver executable. None when the GNAT archive does not include one; the CC toolchain's archiver is used as a fallback.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-args"></a>args</td><td style="text-align: left">tuple[AdaArgsInfo]: Arguments expanded into every action, in command-line order.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-args_files"></a>args_files</td><td style="text-align: left">depset[File]: Files referenced by <code>args</code>, added to every action's inputs.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-artifact_name_patterns"></a>artifact_name_patterns</td><td style="text-align: left">dict[str, str]: Output file name pattern per category (<code>executable</code>, <code>shared_library</code>, <code>static_library</code>) with <code>%{name}</code> for the target name.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-bind_flags"></a>bind_flags</td><td style="text-align: left">list[str]: Toolchain-level binder flags.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-binder"></a>binder</td><td style="text-align: left">File: The gnatbind executable for elaboration ordering.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compile_flags"></a>compile_flags</td><td style="text-align: left">list[str]: Toolchain-level compile flags.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler"></a>compiler</td><td style="text-align: left">File: The Ada compiler executable (gcc with GNAT support).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler_id"></a>compiler_id</td><td style="text-align: left">str: Compiler identifier (e.g., 'gnat').</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler_lib"></a>compiler_lib</td><td style="text-align: left">depset[File]: GCC support files (backends, shared libs, runtime libs).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-dynamic_runtime_lib"></a>dynamic_runtime_lib</td><td style="text-align: left">list[File]: Shared runtime libraries staged beside each linked output when the <code>static_libgcc</code> feature is disabled (e.g. libgcc_s.1.1.dylib).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-enabled_features"></a>enabled_features</td><td style="text-align: left">tuple[AdaFeatureInfo]: Features on by default for every target using this toolchain.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-gcov"></a>gcov</td><td style="text-align: left">File: The gcov executable for coverage, or None.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-known_features"></a>known_features</td><td style="text-align: left">tuple[AdaFeatureInfo]: Features the toolchain understands, in the order their arguments are emitted.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-label"></a>label</td><td style="text-align: left">Label: The label of the toolchain target.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-process_wrapper"></a>process_wrapper</td><td style="text-align: left">File: The process wrapper executable for build actions.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-static_runtime_lib"></a>static_runtime_lib</td><td style="text-align: left">list[File]: Runtime archives in link order (libgnarl.a, libgnat.a, libgcc.a, ...), linked into executables and Windows shared libraries after the dependency libraries.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-target_triple"></a>target_triple</td><td style="text-align: left">str: GCC target triple (e.g., 'aarch64-apple-darwin24.6.0', 'x86_64-pc-linux-gnu'). Informational; no rule behaviour depends on it.</td></tr>
 </tbody></table>
 </div>
                     </main>

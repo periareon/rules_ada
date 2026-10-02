@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Rules - rules_ada</title>
+        <title>ada_args - rules_ada</title>
 
 
         <!-- Custom HTML head -->
@@ -155,30 +155,65 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="rules"><a class="header" href="#rules">Rules</a></h1>
+                        <!-- Generated with Stardoc: http://skydoc.bazel.build -->
+<h1 id="ada_args"><a class="header" href="#ada_args">ada_args</a></h1>
+<h2 id="rules"><a class="header" href="#rules">Rules</a></h2>
 <ul>
-<li><a href="./ada_args.html">ada_args</a></li>
-<li><a href="./ada_args_list.html">ada_args_list</a></li>
-<li><a href="./ada_binary.html">ada_binary</a></li>
-<li><a href="./ada_feature.html">ada_feature</a></li>
-<li><a href="./ada_info.html">ada_info</a></li>
-<li><a href="./ada_library.html">ada_library</a></li>
-<li><a href="./ada_nested_args.html">ada_nested_args</a></li>
-<li><a href="./ada_shared_library.html">ada_shared_library</a></li>
-<li><a href="./ada_static_library.html">ada_static_library</a></li>
-<li><a href="./ada_test.html">ada_test</a></li>
-<li><a href="./ada_toolchain.html">ada_toolchain</a></li>
+<li><a href="#ada_args">ada_args</a></li>
 </ul>
+<p><a id="ada_args"></a></p>
+<h2 id="ada_args-1"><a class="header" href="#ada_args-1">ada_args</a></h2>
+<pre>
+load("@rules_ada//ada/toolchains:args.bzl", "ada_args")
 
+ada_args(<a href="#ada_args-name">name</a>, <a href="#ada_args-data">data</a>, <a href="#ada_args-actions">actions</a>, <a href="#ada_args-args">args</a>, <a href="#ada_args-iterate_over">iterate_over</a>, <a href="#ada_args-nested">nested</a>, <a href="#ada_args-requires_false">requires_false</a>, <a href="#ada_args-requires_none">requires_none</a>,
+         <a href="#ada_args-requires_not_none">requires_not_none</a>, <a href="#ada_args-requires_true">requires_true</a>)
+</pre>
+<p>Arguments an Ada toolchain passes to some of its actions.</p>
+<p>Templates expand variables of the action (<code>{output}</code>, <code>{objects}</code>, ...) and
+can be conditional on them; the toolchains documentation lists the variables
+of each action. Order matters: an <code>ada_toolchain</code> emits its <code>args</code> in the
+order given, after the tool and before the arguments of enabled features.</p>
+<pre><code class="language-python">load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "soname",
+    actions = ["link_shared_library"],
+    args = ["-Wl,-soname,{output_basename}"],
+)
+
+ada_args(
+    name = "rpaths",
+    actions = LINK_ACTIONS,
+    args = ["-Wl,-rpath,$ORIGIN/{runtime_library_search_directories}"],
+    iterate_over = "runtime_library_search_directories",
+)
+</code></pre>
+<p>An <code>ada_args</code> target can be listed directly in <code>ada_toolchain.args</code> or
+bundled with <a href="./ada_args_list.html"><code>ada_args_list</code></a>.</p>
+<p><strong>ATTRIBUTES</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="ada_args-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-data"></a>data</td><td style="text-align: left">Files the arguments refer to; added as inputs of every action the arguments apply to.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-actions"></a>actions</td><td style="text-align: left">Actions the arguments apply to: <code>compile</code>, <code>bind</code>, <code>archive</code>, <code>link_executable</code>, <code>link_shared_library</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-args"></a>args</td><td style="text-align: left">Argument templates. <code>{name}</code> and <code>{name.field}</code> expand variables of the action; an argument that is exactly <code>{name}</code> for a list variable expands to one argument per element. <code>{{</code> and <code>}}</code> are literal braces. Mutually exclusive with <code>nested</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-iterate_over"></a>iterate_over</td><td style="text-align: left">A list variable; the node is expanded once per element, with the element bound to the same name.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-nested"></a>nested</td><td style="text-align: left"><code>ada_nested_args</code> expanded in order after <code>args</code>, for per-element conditions.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_false"></a>requires_false</td><td style="text-align: left">Expand only if this bool variable is False.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_none"></a>requires_none</td><td style="text-align: left">Expand only if this variable is unset or an empty list.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_not_none"></a>requires_not_none</td><td style="text-align: left">Expand only if this variable is set and, for lists, non-empty.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_true"></a>requires_true</td><td style="text-align: left">Expand only if this bool variable is True.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+</tbody></table>
+</div>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="runfiles.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="ada_args.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="ada_args_list.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -188,11 +223,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="runfiles.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="ada_args.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="ada_args_list.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

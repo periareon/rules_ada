@@ -189,12 +189,210 @@ one, so add it to your own <code>MODULE.bazel</code> ahead of any <code>bazel_de
 <code>rules_cc</code>:</p>
 <pre><code class="language-python">bazel_dep(name = "apple_support", version = "2.5.4")
 </code></pre>
-<h2 id="bringing-your-own-gnat"><a class="header" href="#bringing-your-own-gnat">Bringing your own GNAT</a></h2>
-<p>A GNAT installation that is not provided by hermetic-gnat can be wired up with
-the <a href="./ada_toolchain.html"><code>ada_toolchain</code></a> rule and a <code>toolchain()</code> declaration
-for <code>@rules_ada//ada:toolchain_type</code>. Link flags that are plain relative paths
-are resolved against the toolchain repository root, which is taken to be the
-parent directory of the compiler's <code>bin/</code> directory.</p>
+<h2 id="link-lines"><a class="header" href="#link-lines">Link lines</a></h2>
+<p>Every link command is the compiler followed by the expansion of the
+toolchain's <code>args</code>: <a href="./ada_args.html"><code>ada_args</code></a> targets whose templates
+reference the variables of the action, in the order the toolchain lists
+them, then the arguments of enabled <a href="#features">features</a> in <code>known_features</code>
+order. The rules add nothing on their own, not even <code>-o</code>, so a toolchain has
+full control over the command line.</p>
+<p><code>rules_ada</code> ships complete link lines per platform family that the hermetic
+toolchains use and a custom toolchain can reuse, extend or replace:</p>
+<div class="table-wrapper"><table><thead><tr><th>Target</th><th>Behaviour</th></tr></thead><tbody>
+<tr><td><code>@rules_ada//ada/toolchains/args/elf:link_line</code></td><td>GNU ld: <code>--start-group</code> / <code>--end-group</code> around the dependency libraries, <code>--whole-archive</code> for <code>alwayslink</code> ones, <code>-Wl,-soname</code>, <code>$ORIGIN</code>-relative rpaths. Add <code>elf:linux_system_libs</code> for <code>-lm -lpthread -ldl -lrt</code>.</td></tr>
+<tr><td><code>@rules_ada//ada/toolchains/args/darwin:link_line</code></td><td>Apple ld: <code>-force_load</code> for <code>alwayslink</code> libraries, <code>-undefined dynamic_lookup</code> and <code>-install_name @rpath/...</code> for shared libraries, <code>@loader_path</code>-relative rpaths, the C/C++ toolchain's deployment target. Add <code>darwin:sysroot_from_env</code> and <code>darwin:nodefaultrpaths</code>.</td></tr>
+<tr><td><code>@rules_ada//ada/toolchains/args/windows:link_line</code></td><td>MinGW: runtime archives linked into DLLs as well, no rpaths.</td></tr>
+</tbody></table>
+</div>
+<p>The building blocks live in <code>@rules_ada//ada/toolchains/args</code> (<code>objects</code>,
+<code>gnu_libraries_to_link</code>, <code>darwin_libraries_to_link</code>, <code>dep_link_flags</code>,
+<code>user_link_flags</code>, <code>runtime_libraries</code>, <code>coverage_link_flags</code>, <code>output</code>, ...).
+The two link actions, <code>link_executable</code> and <code>link_shared_library</code>, expose
+these variables:</p>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>output</code></td><td>File</td><td>The executable or shared library being linked.</td></tr>
+<tr><td><code>output_basename</code></td><td>string</td><td>Its file name, for <code>-soname</code> and <code>-install_name</code>.</td></tr>
+<tr><td><code>objects</code></td><td>list of File</td><td>Object files, including the binder's and, for executables, those of Ada dependencies.</td></tr>
+<tr><td><code>libraries_to_link</code></td><td>list of struct</td><td>Dependency libraries in order; fields <code>file</code>, <code>whole_archive</code> (an <code>alwayslink</code> archive) and <code>dynamic</code>.</td></tr>
+<tr><td><code>dep_link_flags</code></td><td>list of string</td><td><code>linkopts</code> contributed by dependencies; bare MSVC <code>name.lib</code> entries arrive as <code>-lname</code>.</td></tr>
+<tr><td><code>user_link_flags</code></td><td>list of string</td><td>The target's own <code>linkopts</code>, verbatim.</td></tr>
+<tr><td><code>runtime_libraries</code></td><td>list of File</td><td>The toolchain's <code>static_runtime_lib</code>, in order.</td></tr>
+<tr><td><code>coverage_link_flags</code></td><td>list of string</td><td><code>libgcov.a</code> and the C/C++ coverage runtime; empty unless coverage is on.</td></tr>
+<tr><td><code>runtime_library_search_directories</code></td><td>list of string</td><td>Directories, relative to the output, holding its shared dependencies and staged runtime libraries, for both the <code>bazel-bin</code> and runfiles layouts; <code>.</code> for its own directory. Executables list their shared dependencies; shared libraries only their staged runtime libraries.</td></tr>
+<tr><td><code>macos_deployment_target</code></td><td>optional string</td><td>The C/C++ toolchain's Apple deployment target, when it declares one.</td></tr>
+</tbody></table>
+</div>
+<p>A template is a plain string with <code>{name}</code> or <code>{name.field}</code> placeholders. An
+argument that is exactly <code>{name}</code> for a list expands to one argument per
+element; <code>iterate_over</code> expands a whole <code>ada_args</code> once per element with the
+element bound to the list's name; <code>requires_true</code>, <code>requires_false</code>,
+<code>requires_not_none</code> and <code>requires_none</code> make an <code>ada_args</code> (or an
+<a href="./ada_nested_args.html"><code>ada_nested_args</code></a> inside an iteration) conditional.
+An empty list counts as unset. Templates are checked against the action's
+variables when the <code>ada_args</code> target is analyzed.</p>
+<p><code>ada_args</code> can also target <code>compile</code>, <code>bind</code> and <code>archive</code>; those actions
+expose no variables, and the arguments are appended after the toolchain's
+<code>compile_flags</code> or <code>bind_flags</code>, or right after the archiver.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<p>Features follow the <code>cc_*</code> rules' conventions. An <a href="./ada_feature.html"><code>ada_feature</code></a>
+names a set of arguments; a toolchain lists the features it understands in
+<code>known_features</code> and the ones on by default in <code>enabled_features</code>; a target
+adds or removes them with <code>features = ["name"]</code> or <code>features = ["-name"]</code>;
+<code>--features</code> applies to every target. The effective set is also forwarded to
+the C/C++ toolchain.</p>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Effect</th></tr></thead><tbody>
+<tr><td><code>static_libgcc</code> (<code>@rules_ada//ada/toolchains/features:static_libgcc</code>)</td><td>Passes <code>-static-libgcc</code> to every link. While it is disabled the rules stage the toolchain's <code>dynamic_runtime_lib</code> beside the output. Enabled by default by every hermetic toolchain.</td></tr>
+<tr><td><code>static_linking_mode</code>, <code>dynamic_linking_mode</code></td><td>Derived from <code>linkstatic</code> and <code>--dynamic_mode</code> exactly as <code>cc_binary</code> does and requested for forward compatibility. No shipped argument depends on them yet: the hermetic GNAT runtime is static only.</td></tr>
+</tbody></table>
+</div>
+<p><code>linkopts</code> are passed through verbatim and never inspected; a target that
+wants the shared libgcc disables the feature rather than passing
+<code>-shared-libgcc</code>.</p>
+<h2 id="differences-from-gnatlink"><a class="header" href="#differences-from-gnatlink">Differences from gnatlink</a></h2>
+<p>The hermetic toolchains aim to produce the binaries <code>gnatmake</code> and <code>gprbuild</code>
+would, so that moving a project to Bazel changes as little as possible. Two
+things take precedence over that, in order: every output must be
+byte-for-byte reproducible across machines, and it must not depend on files
+of the build machine that another machine may lack. Where <code>gnatlink</code> falls
+short of either, rules_ada deviates, and the comment next to the deviation
+says what the ecosystem does instead. The shipped arg sets and features make
+every one of them reversible for a custom toolchain or a target.</p>
+<div class="table-wrapper"><table><thead><tr><th>Topic</th><th>gnatlink</th><th>Hermetic rules_ada toolchains</th><th>Why</th></tr></thead><tbody>
+<tr><td>libgcc on Linux and Windows</td><td><code>-static-libgcc</code></td><td><code>-static-libgcc</code> (feature <code>static_libgcc</code>)</td><td>Matches, and keeps binaries off the host's <code>libgcc_s.so.1</code>. Programs that must share one unwinder with <code>dlopen</code>'d C++ or JIT code set <code>features = ["-static_libgcc"]</code>.</td></tr>
+<tr><td>libgcc on macOS</td><td>shared <code>libgcc_s.1.1.dylib</code>, found through absolute rpaths into the GNAT installation</td><td><code>-static-libgcc</code></td><td>gnatlink's shape bakes the output base into the binary. The unwinder is libSystem's either way, so nothing is lost. <code>features = ["-static_libgcc"]</code> restores the dynamic dependency with the dylib staged and reached through a relative rpath.</td></tr>
+<tr><td>Driver rpaths on macOS</td><td>absolute paths to the toolchain's <code>lib/</code> directories</td><td><code>-nodefaultrpaths</code>, rpaths only relative to the output</td><td>Absolute paths are neither reproducible nor relocatable.</td></tr>
+<tr><td>Binder-generated linker options</td><td>taken from the binder output, including absolute paths</td><td>scrubbed; the toolchain's args list the runtime libraries explicitly</td><td>Reproducibility.</td></tr>
+<tr><td>Deployment target on macOS</td><td>the driver's default (the release GNAT was built on)</td><td>the C/C++ toolchain's <code>-mmacosx-version-min</code></td><td>Keeps Ada and C/C++ objects consistent and silences linker warnings; drop <code>darwin:macos_deployment_target</code> to get gnatlink's behaviour.</td></tr>
+</tbody></table>
+</div>
+<h2 id="linking-on-macos"><a class="header" href="#linking-on-macos">Linking on macOS</a></h2>
+<p>GCC's Darwin driver, as built for the hermetic toolchains, records absolute
+<code>-rpath</code> entries for its own <code>lib/</code> directories in every executable and shared
+library, and links <code>@rpath/libgcc_s.1.1.dylib</code> from there. Inside Bazel those
+directories live in the output base that ran the link, so such a binary loads
+only on that machine and fails with <code>Library not loaded: @rpath/libgcc_s.1.1.dylib</code>
+when a remote cache hands it to another one.</p>
+<p>The hermetic macOS toolchains therefore link with
+<code>@rules_ada//ada/toolchains/args/darwin:nodefaultrpaths</code> and, like every
+hermetic toolchain, enable the <code>static_libgcc</code> feature, which leaves the
+output with no dependency on the toolchain at all. Exception propagation
+across <code>dlopen</code> boundaries does not need a shared libgcc on macOS: the
+unwinder is libSystem's for every image.</p>
+<p>A target that disables <code>static_libgcc</code> with <code>features = ["-static_libgcc"]</code>
+keeps the dynamic libgcc. <code>rules_ada</code> then symlinks the toolchain's
+<code>dynamic_runtime_lib</code> into <code>&lt;output&gt;.runtime_libs/</code> beside the executable or
+library, lists that directory in <code>runtime_library_search_directories</code> (which
+the darwin link line turns into an <code>@loader_path</code> rpath), and carries the
+staged copy in the target's runfiles and, for <code>ada_shared_library</code>, its
+default outputs. The result loads from <code>bazel-bin</code>, from a runfiles tree and
+from a remote cache hit alike. The staged files are symlinks, so copying a
+binary out of <code>bazel-bin</code> by hand needs <code>cp -L</code>.</p>
+<p>Other dylibs in the toolchain's <code>lib/</code> are not staged. In particular
+<code>-lstdc++</code> resolves to the bundled GNU <code>libstdc++.6.dylib</code> and has the same
+problem; link Apple's <code>-lc++</code> instead when mixing in C++ built by the Xcode
+toolchain.</p>
+<h3 id="deployment-target"><a class="header" href="#deployment-target">Deployment target</a></h3>
+<p>The Apple C/C++ toolchain compiles and links for <code>--macos_minimum_os</code>, which
+defaults to the version of the selected SDK. GNAT's driver defaults to the
+macOS release the toolchain was built on, and Apple's linker warns about every
+C/C++ object "built for newer macOS version than being linked" when the two
+differ. <code>rules_ada</code> reads the version from the C/C++ toolchain's <code>-target</code>
+or <code>-mmacosx-version-min</code> flag and exposes it as the <code>macos_deployment_target</code>
+variable; the darwin link
+line passes it as <code>-mmacosx-version-min</code> to every executable and shared
+library link, so the output's deployment target is the one its C/C++ parts
+already require. Set <code>--macos_minimum_os</code> to lower both at once. Without a
+registered C/C++ toolchain the variable is unset and the GNAT default is left
+alone.</p>
+<h2 id="defining-custom-toolchains"><a class="header" href="#defining-custom-toolchains">Defining custom toolchains</a></h2>
+<p>The hermetic-gnat toolchains above are registered automatically and need no
+configuration. A GNAT installation that rules_ada does not ship, such as a
+distribution package or a vendor build, is declared with the
+<a href="./ada_toolchain.html"><code>ada_toolchain</code></a> rule and a <code>toolchain()</code> for
+<code>@rules_ada//ada:toolchain_type</code>. The runtime archives go in
+<code>static_runtime_lib</code>, in link order, and the link line is assembled from
+<code>ada_args</code>, here the shipped ELF one plus the system libraries:</p>
+<pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
+load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "system_libs",
+    actions = LINK_ACTIONS,
+    args = ["-lm", "-lpthread", "-ldl", "-lrt"],
+)
+
+ada_toolchain(
+    name = "gnat_toolchain",
+    compiler = "@gnat//:bin/gcc",
+    binder = "@gnat//:bin/gnatbind",
+    ar = "@gnat//:bin/ar",
+    gcov = "@gnat//:bin/gcov",
+    ada_std = "@gnat//:ada_std",
+    compiler_lib = "@gnat//:compiler_lib",
+    static_runtime_lib = [
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    ],
+    args = [
+        "@rules_ada//ada/toolchains/args/elf:link_line",
+        ":system_libs",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+toolchain(
+    name = "gnat",
+    exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    toolchain = ":gnat_toolchain",
+    toolchain_type = "@rules_ada//ada:toolchain_type",
+)
+</code></pre>
+<p>GNU ld scans archives once, so <code>libgnarl.a</code> (which references <code>libgnat.a</code>)
+must come first, as in <code>gnatlink</code>'s own <code>-lgnarl -lgnat</code>. Coverage builds look
+for <code>libgcov.a</code> next to the listed <code>libgcc.a</code>. Anything the shipped link line
+does not cover is one more <code>ada_args</code>; a toolchain that needs a different
+structure lists the building blocks from <code>@rules_ada//ada/toolchains/args</code>
+itself, or its own <code>ada_args</code>, instead of <code>link_line</code>.</p>
+<p>A macOS toolchain additionally declares the shared libgcc, enables
+<code>static_libgcc</code>, and keeps the driver's rpaths out of the outputs
+(<code>-nodefaultrpaths</code> needs GCC 13 or newer):</p>
+<pre><code class="language-python">ada_toolchain(
+    name = "gnat_toolchain",
+    # ... as above, with the aarch64-apple-darwin paths ...
+    dynamic_runtime_lib = ["@gnat//:lib/libgcc_s.1.1.dylib"],
+    args = [
+        "@rules_ada//ada/toolchains/args/darwin:link_line",
+        "@rules_ada//ada/toolchains/args/darwin:sysroot_from_env",
+        "@rules_ada//ada/toolchains/args/darwin:nodefaultrpaths",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    enabled_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    target_triple = "aarch64-apple-darwin24.6.0",
+)
+</code></pre>
+<p>Output file names follow <code>artifact_name_patterns</code>; a Windows toolchain sets
+<code>{"executable": "%{name}.exe", "shared_library": "%{name}.dll"}</code> and uses
+<code>@rules_ada//ada/toolchains/args/windows:link_line</code>. A DLL declared in
+<code>dynamic_runtime_lib</code> is staged and carried in runfiles like on any other
+platform, but Windows has no rpath: it is only found if its directory is on
+<code>PATH</code>.</p>
+<h3 id="migrating-from-02x"><a class="header" href="#migrating-from-02x">Migrating from 0.2.x</a></h3>
+<ul>
+<li><code>link_flags</code> is gone. Flags move into an <code>ada_args</code> target listed in <code>args</code>
+after the shipped <code>link_line</code> for the platform (so they follow the runtime
+archives), as <code>system_libs</code> does above. Runtime archives go in
+<code>static_runtime_lib</code>, in the same order they had.</li>
+<li><code>enabled_features</code> now takes <code>ada_feature</code> labels, and every enabled
+feature must also be in <code>known_features</code>.</li>
+<li><code>-shared-libgcc</code> in <code>linkopts</code> is no longer special; use
+<code>features = ["-static_libgcc"]</code>. On the hermetic macOS toolchains the
+linkopt now reaches the driver together with <code>-static-libgcc</code>, which wins.</li>
+<li>On macOS, executables now use <code>@loader_path</code> rpaths like shared libraries
+and <code>cc_binary</code>; staged runtime libraries follow the real output name
+(<code>main.exe.runtime_libs/</code> on Windows).</li>
+</ul>
 
                     </main>
 

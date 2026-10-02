@@ -240,12 +240,210 @@ one, so add it to your own <code>MODULE.bazel</code> ahead of any <code>bazel_de
 <code>rules_cc</code>:</p>
 <pre><code class="language-python">bazel_dep(name = "apple_support", version = "2.5.4")
 </code></pre>
-<h2 id="bringing-your-own-gnat"><a class="header" href="#bringing-your-own-gnat">Bringing your own GNAT</a></h2>
-<p>A GNAT installation that is not provided by hermetic-gnat can be wired up with
-the <a href="./ada_toolchain.html"><code>ada_toolchain</code></a> rule and a <code>toolchain()</code> declaration
-for <code>@rules_ada//ada:toolchain_type</code>. Link flags that are plain relative paths
-are resolved against the toolchain repository root, which is taken to be the
-parent directory of the compiler's <code>bin/</code> directory.</p>
+<h2 id="link-lines"><a class="header" href="#link-lines">Link lines</a></h2>
+<p>Every link command is the compiler followed by the expansion of the
+toolchain's <code>args</code>: <a href="./ada_args.html"><code>ada_args</code></a> targets whose templates
+reference the variables of the action, in the order the toolchain lists
+them, then the arguments of enabled <a href="toolchains.html#features">features</a> in <code>known_features</code>
+order. The rules add nothing on their own, not even <code>-o</code>, so a toolchain has
+full control over the command line.</p>
+<p><code>rules_ada</code> ships complete link lines per platform family that the hermetic
+toolchains use and a custom toolchain can reuse, extend or replace:</p>
+<div class="table-wrapper"><table><thead><tr><th>Target</th><th>Behaviour</th></tr></thead><tbody>
+<tr><td><code>@rules_ada//ada/toolchains/args/elf:link_line</code></td><td>GNU ld: <code>--start-group</code> / <code>--end-group</code> around the dependency libraries, <code>--whole-archive</code> for <code>alwayslink</code> ones, <code>-Wl,-soname</code>, <code>$ORIGIN</code>-relative rpaths. Add <code>elf:linux_system_libs</code> for <code>-lm -lpthread -ldl -lrt</code>.</td></tr>
+<tr><td><code>@rules_ada//ada/toolchains/args/darwin:link_line</code></td><td>Apple ld: <code>-force_load</code> for <code>alwayslink</code> libraries, <code>-undefined dynamic_lookup</code> and <code>-install_name @rpath/...</code> for shared libraries, <code>@loader_path</code>-relative rpaths, the C/C++ toolchain's deployment target. Add <code>darwin:sysroot_from_env</code> and <code>darwin:nodefaultrpaths</code>.</td></tr>
+<tr><td><code>@rules_ada//ada/toolchains/args/windows:link_line</code></td><td>MinGW: runtime archives linked into DLLs as well, no rpaths.</td></tr>
+</tbody></table>
+</div>
+<p>The building blocks live in <code>@rules_ada//ada/toolchains/args</code> (<code>objects</code>,
+<code>gnu_libraries_to_link</code>, <code>darwin_libraries_to_link</code>, <code>dep_link_flags</code>,
+<code>user_link_flags</code>, <code>runtime_libraries</code>, <code>coverage_link_flags</code>, <code>output</code>, ...).
+The two link actions, <code>link_executable</code> and <code>link_shared_library</code>, expose
+these variables:</p>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>output</code></td><td>File</td><td>The executable or shared library being linked.</td></tr>
+<tr><td><code>output_basename</code></td><td>string</td><td>Its file name, for <code>-soname</code> and <code>-install_name</code>.</td></tr>
+<tr><td><code>objects</code></td><td>list of File</td><td>Object files, including the binder's and, for executables, those of Ada dependencies.</td></tr>
+<tr><td><code>libraries_to_link</code></td><td>list of struct</td><td>Dependency libraries in order; fields <code>file</code>, <code>whole_archive</code> (an <code>alwayslink</code> archive) and <code>dynamic</code>.</td></tr>
+<tr><td><code>dep_link_flags</code></td><td>list of string</td><td><code>linkopts</code> contributed by dependencies; bare MSVC <code>name.lib</code> entries arrive as <code>-lname</code>.</td></tr>
+<tr><td><code>user_link_flags</code></td><td>list of string</td><td>The target's own <code>linkopts</code>, verbatim.</td></tr>
+<tr><td><code>runtime_libraries</code></td><td>list of File</td><td>The toolchain's <code>static_runtime_lib</code>, in order.</td></tr>
+<tr><td><code>coverage_link_flags</code></td><td>list of string</td><td><code>libgcov.a</code> and the C/C++ coverage runtime; empty unless coverage is on.</td></tr>
+<tr><td><code>runtime_library_search_directories</code></td><td>list of string</td><td>Directories, relative to the output, holding its shared dependencies and staged runtime libraries, for both the <code>bazel-bin</code> and runfiles layouts; <code>.</code> for its own directory. Executables list their shared dependencies; shared libraries only their staged runtime libraries.</td></tr>
+<tr><td><code>macos_deployment_target</code></td><td>optional string</td><td>The C/C++ toolchain's Apple deployment target, when it declares one.</td></tr>
+</tbody></table>
+</div>
+<p>A template is a plain string with <code>{name}</code> or <code>{name.field}</code> placeholders. An
+argument that is exactly <code>{name}</code> for a list expands to one argument per
+element; <code>iterate_over</code> expands a whole <code>ada_args</code> once per element with the
+element bound to the list's name; <code>requires_true</code>, <code>requires_false</code>,
+<code>requires_not_none</code> and <code>requires_none</code> make an <code>ada_args</code> (or an
+<a href="./ada_nested_args.html"><code>ada_nested_args</code></a> inside an iteration) conditional.
+An empty list counts as unset. Templates are checked against the action's
+variables when the <code>ada_args</code> target is analyzed.</p>
+<p><code>ada_args</code> can also target <code>compile</code>, <code>bind</code> and <code>archive</code>; those actions
+expose no variables, and the arguments are appended after the toolchain's
+<code>compile_flags</code> or <code>bind_flags</code>, or right after the archiver.</p>
+<h2 id="features-1"><a class="header" href="#features-1">Features</a></h2>
+<p>Features follow the <code>cc_*</code> rules' conventions. An <a href="./ada_feature.html"><code>ada_feature</code></a>
+names a set of arguments; a toolchain lists the features it understands in
+<code>known_features</code> and the ones on by default in <code>enabled_features</code>; a target
+adds or removes them with <code>features = ["name"]</code> or <code>features = ["-name"]</code>;
+<code>--features</code> applies to every target. The effective set is also forwarded to
+the C/C++ toolchain.</p>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Effect</th></tr></thead><tbody>
+<tr><td><code>static_libgcc</code> (<code>@rules_ada//ada/toolchains/features:static_libgcc</code>)</td><td>Passes <code>-static-libgcc</code> to every link. While it is disabled the rules stage the toolchain's <code>dynamic_runtime_lib</code> beside the output. Enabled by default by every hermetic toolchain.</td></tr>
+<tr><td><code>static_linking_mode</code>, <code>dynamic_linking_mode</code></td><td>Derived from <code>linkstatic</code> and <code>--dynamic_mode</code> exactly as <code>cc_binary</code> does and requested for forward compatibility. No shipped argument depends on them yet: the hermetic GNAT runtime is static only.</td></tr>
+</tbody></table>
+</div>
+<p><code>linkopts</code> are passed through verbatim and never inspected; a target that
+wants the shared libgcc disables the feature rather than passing
+<code>-shared-libgcc</code>.</p>
+<h2 id="differences-from-gnatlink"><a class="header" href="#differences-from-gnatlink">Differences from gnatlink</a></h2>
+<p>The hermetic toolchains aim to produce the binaries <code>gnatmake</code> and <code>gprbuild</code>
+would, so that moving a project to Bazel changes as little as possible. Two
+things take precedence over that, in order: every output must be
+byte-for-byte reproducible across machines, and it must not depend on files
+of the build machine that another machine may lack. Where <code>gnatlink</code> falls
+short of either, rules_ada deviates, and the comment next to the deviation
+says what the ecosystem does instead. The shipped arg sets and features make
+every one of them reversible for a custom toolchain or a target.</p>
+<div class="table-wrapper"><table><thead><tr><th>Topic</th><th>gnatlink</th><th>Hermetic rules_ada toolchains</th><th>Why</th></tr></thead><tbody>
+<tr><td>libgcc on Linux and Windows</td><td><code>-static-libgcc</code></td><td><code>-static-libgcc</code> (feature <code>static_libgcc</code>)</td><td>Matches, and keeps binaries off the host's <code>libgcc_s.so.1</code>. Programs that must share one unwinder with <code>dlopen</code>'d C++ or JIT code set <code>features = ["-static_libgcc"]</code>.</td></tr>
+<tr><td>libgcc on macOS</td><td>shared <code>libgcc_s.1.1.dylib</code>, found through absolute rpaths into the GNAT installation</td><td><code>-static-libgcc</code></td><td>gnatlink's shape bakes the output base into the binary. The unwinder is libSystem's either way, so nothing is lost. <code>features = ["-static_libgcc"]</code> restores the dynamic dependency with the dylib staged and reached through a relative rpath.</td></tr>
+<tr><td>Driver rpaths on macOS</td><td>absolute paths to the toolchain's <code>lib/</code> directories</td><td><code>-nodefaultrpaths</code>, rpaths only relative to the output</td><td>Absolute paths are neither reproducible nor relocatable.</td></tr>
+<tr><td>Binder-generated linker options</td><td>taken from the binder output, including absolute paths</td><td>scrubbed; the toolchain's args list the runtime libraries explicitly</td><td>Reproducibility.</td></tr>
+<tr><td>Deployment target on macOS</td><td>the driver's default (the release GNAT was built on)</td><td>the C/C++ toolchain's <code>-mmacosx-version-min</code></td><td>Keeps Ada and C/C++ objects consistent and silences linker warnings; drop <code>darwin:macos_deployment_target</code> to get gnatlink's behaviour.</td></tr>
+</tbody></table>
+</div>
+<h2 id="linking-on-macos"><a class="header" href="#linking-on-macos">Linking on macOS</a></h2>
+<p>GCC's Darwin driver, as built for the hermetic toolchains, records absolute
+<code>-rpath</code> entries for its own <code>lib/</code> directories in every executable and shared
+library, and links <code>@rpath/libgcc_s.1.1.dylib</code> from there. Inside Bazel those
+directories live in the output base that ran the link, so such a binary loads
+only on that machine and fails with <code>Library not loaded: @rpath/libgcc_s.1.1.dylib</code>
+when a remote cache hands it to another one.</p>
+<p>The hermetic macOS toolchains therefore link with
+<code>@rules_ada//ada/toolchains/args/darwin:nodefaultrpaths</code> and, like every
+hermetic toolchain, enable the <code>static_libgcc</code> feature, which leaves the
+output with no dependency on the toolchain at all. Exception propagation
+across <code>dlopen</code> boundaries does not need a shared libgcc on macOS: the
+unwinder is libSystem's for every image.</p>
+<p>A target that disables <code>static_libgcc</code> with <code>features = ["-static_libgcc"]</code>
+keeps the dynamic libgcc. <code>rules_ada</code> then symlinks the toolchain's
+<code>dynamic_runtime_lib</code> into <code>&lt;output&gt;.runtime_libs/</code> beside the executable or
+library, lists that directory in <code>runtime_library_search_directories</code> (which
+the darwin link line turns into an <code>@loader_path</code> rpath), and carries the
+staged copy in the target's runfiles and, for <code>ada_shared_library</code>, its
+default outputs. The result loads from <code>bazel-bin</code>, from a runfiles tree and
+from a remote cache hit alike. The staged files are symlinks, so copying a
+binary out of <code>bazel-bin</code> by hand needs <code>cp -L</code>.</p>
+<p>Other dylibs in the toolchain's <code>lib/</code> are not staged. In particular
+<code>-lstdc++</code> resolves to the bundled GNU <code>libstdc++.6.dylib</code> and has the same
+problem; link Apple's <code>-lc++</code> instead when mixing in C++ built by the Xcode
+toolchain.</p>
+<h3 id="deployment-target"><a class="header" href="#deployment-target">Deployment target</a></h3>
+<p>The Apple C/C++ toolchain compiles and links for <code>--macos_minimum_os</code>, which
+defaults to the version of the selected SDK. GNAT's driver defaults to the
+macOS release the toolchain was built on, and Apple's linker warns about every
+C/C++ object "built for newer macOS version than being linked" when the two
+differ. <code>rules_ada</code> reads the version from the C/C++ toolchain's <code>-target</code>
+or <code>-mmacosx-version-min</code> flag and exposes it as the <code>macos_deployment_target</code>
+variable; the darwin link
+line passes it as <code>-mmacosx-version-min</code> to every executable and shared
+library link, so the output's deployment target is the one its C/C++ parts
+already require. Set <code>--macos_minimum_os</code> to lower both at once. Without a
+registered C/C++ toolchain the variable is unset and the GNAT default is left
+alone.</p>
+<h2 id="defining-custom-toolchains"><a class="header" href="#defining-custom-toolchains">Defining custom toolchains</a></h2>
+<p>The hermetic-gnat toolchains above are registered automatically and need no
+configuration. A GNAT installation that rules_ada does not ship, such as a
+distribution package or a vendor build, is declared with the
+<a href="./ada_toolchain.html"><code>ada_toolchain</code></a> rule and a <code>toolchain()</code> for
+<code>@rules_ada//ada:toolchain_type</code>. The runtime archives go in
+<code>static_runtime_lib</code>, in link order, and the link line is assembled from
+<code>ada_args</code>, here the shipped ELF one plus the system libraries:</p>
+<pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
+load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "system_libs",
+    actions = LINK_ACTIONS,
+    args = ["-lm", "-lpthread", "-ldl", "-lrt"],
+)
+
+ada_toolchain(
+    name = "gnat_toolchain",
+    compiler = "@gnat//:bin/gcc",
+    binder = "@gnat//:bin/gnatbind",
+    ar = "@gnat//:bin/ar",
+    gcov = "@gnat//:bin/gcov",
+    ada_std = "@gnat//:ada_std",
+    compiler_lib = "@gnat//:compiler_lib",
+    static_runtime_lib = [
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    ],
+    args = [
+        "@rules_ada//ada/toolchains/args/elf:link_line",
+        ":system_libs",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    target_triple = "x86_64-pc-linux-gnu",
+)
+
+toolchain(
+    name = "gnat",
+    exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    toolchain = ":gnat_toolchain",
+    toolchain_type = "@rules_ada//ada:toolchain_type",
+)
+</code></pre>
+<p>GNU ld scans archives once, so <code>libgnarl.a</code> (which references <code>libgnat.a</code>)
+must come first, as in <code>gnatlink</code>'s own <code>-lgnarl -lgnat</code>. Coverage builds look
+for <code>libgcov.a</code> next to the listed <code>libgcc.a</code>. Anything the shipped link line
+does not cover is one more <code>ada_args</code>; a toolchain that needs a different
+structure lists the building blocks from <code>@rules_ada//ada/toolchains/args</code>
+itself, or its own <code>ada_args</code>, instead of <code>link_line</code>.</p>
+<p>A macOS toolchain additionally declares the shared libgcc, enables
+<code>static_libgcc</code>, and keeps the driver's rpaths out of the outputs
+(<code>-nodefaultrpaths</code> needs GCC 13 or newer):</p>
+<pre><code class="language-python">ada_toolchain(
+    name = "gnat_toolchain",
+    # ... as above, with the aarch64-apple-darwin paths ...
+    dynamic_runtime_lib = ["@gnat//:lib/libgcc_s.1.1.dylib"],
+    args = [
+        "@rules_ada//ada/toolchains/args/darwin:link_line",
+        "@rules_ada//ada/toolchains/args/darwin:sysroot_from_env",
+        "@rules_ada//ada/toolchains/args/darwin:nodefaultrpaths",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    enabled_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
+    target_triple = "aarch64-apple-darwin24.6.0",
+)
+</code></pre>
+<p>Output file names follow <code>artifact_name_patterns</code>; a Windows toolchain sets
+<code>{"executable": "%{name}.exe", "shared_library": "%{name}.dll"}</code> and uses
+<code>@rules_ada//ada/toolchains/args/windows:link_line</code>. A DLL declared in
+<code>dynamic_runtime_lib</code> is staged and carried in runfiles like on any other
+platform, but Windows has no rpath: it is only found if its directory is on
+<code>PATH</code>.</p>
+<h3 id="migrating-from-02x"><a class="header" href="#migrating-from-02x">Migrating from 0.2.x</a></h3>
+<ul>
+<li><code>link_flags</code> is gone. Flags move into an <code>ada_args</code> target listed in <code>args</code>
+after the shipped <code>link_line</code> for the platform (so they follow the runtime
+archives), as <code>system_libs</code> does above. Runtime archives go in
+<code>static_runtime_lib</code>, in the same order they had.</li>
+<li><code>enabled_features</code> now takes <code>ada_feature</code> labels, and every enabled
+feature must also be in <code>known_features</code>.</li>
+<li><code>-shared-libgcc</code> in <code>linkopts</code> is no longer special; use
+<code>features = ["-static_libgcc"]</code>. On the hermetic macOS toolchains the
+linkopt now reaches the driver together with <code>-static-libgcc</code>, which wins.</li>
+<li>On macOS, executables now use <code>@loader_path</code> rpaths like shared libraries
+and <code>cc_binary</code>; staged runtime libraries follow the real output name
+(<code>main.exe.runtime_libs/</code> on Windows).</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="runfiles-1"><a class="header" href="#runfiles-1">Runfiles</a></h1>
 <p><code>@rules_ada//ada/runfiles</code> is an Ada implementation of Bazel's runfiles
 lookup, equivalent to the C++ and Python libraries that ship with Bazel. It
@@ -273,17 +471,92 @@ end Tool;
 <a href="https://github.com/periareon/rules_ada/blob/main/ada/runfiles/README.md">README</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="rules"><a class="header" href="#rules">Rules</a></h1>
 <ul>
+<li><a href="./ada_args.html">ada_args</a></li>
+<li><a href="./ada_args_list.html">ada_args_list</a></li>
 <li><a href="./ada_binary.html">ada_binary</a></li>
+<li><a href="./ada_feature.html">ada_feature</a></li>
 <li><a href="./ada_info.html">ada_info</a></li>
 <li><a href="./ada_library.html">ada_library</a></li>
+<li><a href="./ada_nested_args.html">ada_nested_args</a></li>
 <li><a href="./ada_shared_library.html">ada_shared_library</a></li>
 <li><a href="./ada_static_library.html">ada_static_library</a></li>
 <li><a href="./ada_test.html">ada_test</a></li>
 <li><a href="./ada_toolchain.html">ada_toolchain</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
-<h1 id="ada_binary"><a class="header" href="#ada_binary">ada_binary</a></h1>
+<h1 id="ada_args"><a class="header" href="#ada_args">ada_args</a></h1>
 <h2 id="rules-1"><a class="header" href="#rules-1">Rules</a></h2>
+<ul>
+<li><a href="ada_args.html#ada_args">ada_args</a></li>
+</ul>
+<p><a id="ada_args"></a></p>
+<h2 id="ada_args-1"><a class="header" href="#ada_args-1">ada_args</a></h2>
+<pre>
+load("@rules_ada//ada/toolchains:args.bzl", "ada_args")
+
+ada_args(<a href="ada_args.html#ada_args-name">name</a>, <a href="ada_args.html#ada_args-data">data</a>, <a href="ada_args.html#ada_args-actions">actions</a>, <a href="ada_args.html#ada_args-args">args</a>, <a href="ada_args.html#ada_args-iterate_over">iterate_over</a>, <a href="ada_args.html#ada_args-nested">nested</a>, <a href="ada_args.html#ada_args-requires_false">requires_false</a>, <a href="ada_args.html#ada_args-requires_none">requires_none</a>,
+         <a href="ada_args.html#ada_args-requires_not_none">requires_not_none</a>, <a href="ada_args.html#ada_args-requires_true">requires_true</a>)
+</pre>
+<p>Arguments an Ada toolchain passes to some of its actions.</p>
+<p>Templates expand variables of the action (<code>{output}</code>, <code>{objects}</code>, ...) and
+can be conditional on them; the toolchains documentation lists the variables
+of each action. Order matters: an <code>ada_toolchain</code> emits its <code>args</code> in the
+order given, after the tool and before the arguments of enabled features.</p>
+<pre><code class="language-python">load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "soname",
+    actions = ["link_shared_library"],
+    args = ["-Wl,-soname,{output_basename}"],
+)
+
+ada_args(
+    name = "rpaths",
+    actions = LINK_ACTIONS,
+    args = ["-Wl,-rpath,$ORIGIN/{runtime_library_search_directories}"],
+    iterate_over = "runtime_library_search_directories",
+)
+</code></pre>
+<p>An <code>ada_args</code> target can be listed directly in <code>ada_toolchain.args</code> or
+bundled with <a href="./ada_args_list.html"><code>ada_args_list</code></a>.</p>
+<p><strong>ATTRIBUTES</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="ada_args-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-data"></a>data</td><td style="text-align: left">Files the arguments refer to; added as inputs of every action the arguments apply to.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-actions"></a>actions</td><td style="text-align: left">Actions the arguments apply to: <code>compile</code>, <code>bind</code>, <code>archive</code>, <code>link_executable</code>, <code>link_shared_library</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-args"></a>args</td><td style="text-align: left">Argument templates. <code>{name}</code> and <code>{name.field}</code> expand variables of the action; an argument that is exactly <code>{name}</code> for a list variable expands to one argument per element. <code>{{</code> and <code>}}</code> are literal braces. Mutually exclusive with <code>nested</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-iterate_over"></a>iterate_over</td><td style="text-align: left">A list variable; the node is expanded once per element, with the element bound to the same name.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-nested"></a>nested</td><td style="text-align: left"><code>ada_nested_args</code> expanded in order after <code>args</code>, for per-element conditions.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_false"></a>requires_false</td><td style="text-align: left">Expand only if this bool variable is False.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_none"></a>requires_none</td><td style="text-align: left">Expand only if this variable is unset or an empty list.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_not_none"></a>requires_not_none</td><td style="text-align: left">Expand only if this variable is set and, for lists, non-empty.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_args-requires_true"></a>requires_true</td><td style="text-align: left">Expand only if this bool variable is True.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
+<h1 id="ada_args_list"><a class="header" href="#ada_args_list">ada_args_list</a></h1>
+<h2 id="rules-2"><a class="header" href="#rules-2">Rules</a></h2>
+<ul>
+<li><a href="ada_args_list.html#ada_args_list">ada_args_list</a></li>
+</ul>
+<p><a id="ada_args_list"></a></p>
+<h2 id="ada_args_list-1"><a class="header" href="#ada_args_list-1">ada_args_list</a></h2>
+<pre>
+load("@rules_ada//ada/toolchains:args_list.bzl", "ada_args_list")
+
+ada_args_list(<a href="ada_args_list.html#ada_args_list-name">name</a>, <a href="ada_args_list.html#ada_args_list-args">args</a>)
+</pre>
+<p>An ordered bundle of <a href="./ada_args.html"><code>ada_args</code></a> (or other lists).</p>
+<p>The default link lines shipped under <code>@rules_ada//ada/toolchains/args/...</code>
+are <code>ada_args_list</code> targets; a custom toolchain can list one of them next to
+its own <code>ada_args</code>.</p>
+<p><strong>ATTRIBUTES</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="ada_args_list-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_args_list-args"></a>args</td><td style="text-align: left"><code>ada_args</code> and <code>ada_args_list</code> targets, in command-line order.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
+<h1 id="ada_binary"><a class="header" href="#ada_binary">ada_binary</a></h1>
+<h2 id="rules-3"><a class="header" href="#rules-3">Rules</a></h2>
 <ul>
 <li><a href="ada_binary.html#ada_binary">ada_binary</a></li>
 </ul>
@@ -304,9 +577,40 @@ ada_binary(<a href="ada_binary.html#ada_binary-name">name</a>, <a href="ada_bina
 <tr><td style="text-align: left"><a id="ada_binary-compile_data"></a>compile_data</td><td style="text-align: left">Additional Ada source files needed during compilation but not compiled independently (e.g., subunit bodies referenced via 'separate').</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-copts"></a>copts</td><td style="text-align: left">Additional compiler flags for Ada compilation (e.g., <code>-gnatwa</code>, <code>-O2</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_binary-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_binary-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies. Like <code>cc_binary</code>, this also selects the <code>static_linking_mode</code> feature; <code>False</code> (or <code>--dynamic_mode=fully</code>) selects <code>dynamic_linking_mode</code> instead.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. It is compiled even if it is not listed in <code>srcs</code>. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_binary-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
+<h1 id="ada_feature"><a class="header" href="#ada_feature">ada_feature</a></h1>
+<h2 id="rules-4"><a class="header" href="#rules-4">Rules</a></h2>
+<ul>
+<li><a href="ada_feature.html#ada_feature">ada_feature</a></li>
+</ul>
+<p><a id="ada_feature"></a></p>
+<h2 id="ada_feature-1"><a class="header" href="#ada_feature-1">ada_feature</a></h2>
+<pre>
+load("@rules_ada//ada/toolchains:feature.bzl", "ada_feature")
+
+ada_feature(<a href="ada_feature.html#ada_feature-name">name</a>, <a href="ada_feature.html#ada_feature-args">args</a>, <a href="ada_feature.html#ada_feature-feature_name">feature_name</a>)
+</pre>
+<p>A named set of arguments that can be toggled per target.</p>
+<p>A toolchain lists the features it understands in <code>known_features</code> and the
+ones on by default in <code>enabled_features</code>. Targets add or remove them with
+the common <code>features</code> attribute (<code>features = ["-static_libgcc"]</code>), and
+<code>--features</code> applies globally. The arguments of enabled features are emitted
+after the toolchain's own <code>args</code>, in <code>known_features</code> order.</p>
+<pre><code class="language-python">ada_feature(
+    name = "static_libgcc",
+    feature_name = "static_libgcc",
+    args = [":static_libgcc_flags"],
+)
+</code></pre>
+<p><strong>ATTRIBUTES</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="ada_feature-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_feature-args"></a>args</td><td style="text-align: left"><code>ada_args</code> emitted while the feature is enabled.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_feature-feature_name"></a>feature_name</td><td style="text-align: left">The name used in <code>features</code> attributes and <code>--features</code>.</td><td style="text-align: left">String</td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_info"><a class="header" href="#ada_info">ada_info</a></h1>
@@ -359,7 +663,7 @@ merge_ada_infos(<a href="ada_info.html#merge_ada_infos-deps">deps</a>)
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_library"><a class="header" href="#ada_library">ada_library</a></h1>
-<h2 id="rules-2"><a class="header" href="#rules-2">Rules</a></h2>
+<h2 id="rules-5"><a class="header" href="#rules-5">Rules</a></h2>
 <ul>
 <li><a href="ada_library.html#ada_library">ada_library</a></li>
 </ul>
@@ -384,8 +688,56 @@ ada_library(<a href="ada_library.html#ada_library-name">name</a>, <a href="ada_l
 <tr><td style="text-align: left"><a id="ada_library-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
+<h1 id="ada_nested_args"><a class="header" href="#ada_nested_args">ada_nested_args</a></h1>
+<h2 id="rules-6"><a class="header" href="#rules-6">Rules</a></h2>
+<ul>
+<li><a href="ada_nested_args.html#ada_nested_args">ada_nested_args</a></li>
+</ul>
+<p><a id="ada_nested_args"></a></p>
+<h2 id="ada_nested_args-1"><a class="header" href="#ada_nested_args-1">ada_nested_args</a></h2>
+<pre>
+load("@rules_ada//ada/toolchains:nested_args.bzl", "ada_nested_args")
+
+ada_nested_args(<a href="ada_nested_args.html#ada_nested_args-name">name</a>, <a href="ada_nested_args.html#ada_nested_args-data">data</a>, <a href="ada_nested_args.html#ada_nested_args-args">args</a>, <a href="ada_nested_args.html#ada_nested_args-iterate_over">iterate_over</a>, <a href="ada_nested_args.html#ada_nested_args-nested">nested</a>, <a href="ada_nested_args.html#ada_nested_args-requires_false">requires_false</a>, <a href="ada_nested_args.html#ada_nested_args-requires_none">requires_none</a>,
+                <a href="ada_nested_args.html#ada_nested_args-requires_not_none">requires_not_none</a>, <a href="ada_nested_args.html#ada_nested_args-requires_true">requires_true</a>)
+</pre>
+<p>A node inside an <a href="./ada_args.html"><code>ada_args</code></a> template tree.</p>
+<p>Nested args exist for conditions that must be evaluated per element of an
+iterated list, such as wrapping only <code>alwayslink</code> libraries:</p>
+<pre><code class="language-python">ada_args(
+    name = "libraries_to_link",
+    actions = LINK_ACTIONS,
+    iterate_over = "libraries_to_link",
+    nested = [":whole_archive_library", ":plain_library"],
+)
+
+ada_nested_args(
+    name = "whole_archive_library",
+    args = ["-Wl,-force_load,{libraries_to_link.file}"],
+    requires_true = "libraries_to_link.whole_archive",
+)
+
+ada_nested_args(
+    name = "plain_library",
+    args = ["{libraries_to_link.file}"],
+    requires_false = "libraries_to_link.whole_archive",
+)
+</code></pre>
+<p><strong>ATTRIBUTES</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="ada_nested_args-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-data"></a>data</td><td style="text-align: left">Files the arguments refer to; added as inputs of every action the arguments apply to.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-args"></a>args</td><td style="text-align: left">Argument templates. <code>{name}</code> and <code>{name.field}</code> expand variables of the action; an argument that is exactly <code>{name}</code> for a list variable expands to one argument per element. <code>{{</code> and <code>}}</code> are literal braces. Mutually exclusive with <code>nested</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-iterate_over"></a>iterate_over</td><td style="text-align: left">A list variable; the node is expanded once per element, with the element bound to the same name.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-nested"></a>nested</td><td style="text-align: left"><code>ada_nested_args</code> expanded in order after <code>args</code>, for per-element conditions.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-requires_false"></a>requires_false</td><td style="text-align: left">Expand only if this bool variable is False.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-requires_none"></a>requires_none</td><td style="text-align: left">Expand only if this variable is unset or an empty list.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-requires_not_none"></a>requires_not_none</td><td style="text-align: left">Expand only if this variable is set and, for lists, non-empty.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_nested_args-requires_true"></a>requires_true</td><td style="text-align: left">Expand only if this bool variable is True.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_shared_library"><a class="header" href="#ada_shared_library">ada_shared_library</a></h1>
-<h2 id="rules-3"><a class="header" href="#rules-3">Rules</a></h2>
+<h2 id="rules-7"><a class="header" href="#rules-7">Rules</a></h2>
 <ul>
 <li><a href="ada_shared_library.html#ada_shared_library">ada_shared_library</a></li>
 </ul>
@@ -413,7 +765,7 @@ ada_shared_library(<a href="ada_shared_library.html#ada_shared_library-name">nam
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_static_library"><a class="header" href="#ada_static_library">ada_static_library</a></h1>
-<h2 id="rules-4"><a class="header" href="#rules-4">Rules</a></h2>
+<h2 id="rules-8"><a class="header" href="#rules-8">Rules</a></h2>
 <ul>
 <li><a href="ada_static_library.html#ada_static_library">ada_static_library</a></li>
 </ul>
@@ -441,7 +793,7 @@ ada_static_library(<a href="ada_static_library.html#ada_static_library-name">nam
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_test"><a class="header" href="#ada_test">ada_test</a></h1>
-<h2 id="rules-5"><a class="header" href="#rules-5">Rules</a></h2>
+<h2 id="rules-9"><a class="header" href="#rules-9">Rules</a></h2>
 <ul>
 <li><a href="ada_test.html#ada_test">ada_test</a></li>
 </ul>
@@ -465,33 +817,49 @@ ada_test(<a href="ada_test.html#ada_test-name">name</a>, <a href="ada_test.html#
 <tr><td style="text-align: left"><a id="ada_test-env"></a>env</td><td style="text-align: left">Environment variables to set when running the test.</td><td style="text-align: left"><a href="https://bazel.build/rules/lib/core/dict">Dictionary: String -&gt; String</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>{}</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-env_inherit"></a>env_inherit</td><td style="text-align: left">Environment variables to inherit from the host environment.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-linkopts"></a>linkopts</td><td style="text-align: left">Additional linker flags.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_test-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_test-linkstatic"></a>linkstatic</td><td style="text-align: left">Prefer static linking for dependencies. Like <code>cc_binary</code>, this also selects the <code>static_linking_mode</code> feature; <code>False</code> (or <code>--dynamic_mode=fully</code>) selects <code>dynamic_linking_mode</code> instead.</td><td style="text-align: left">Boolean</td><td style="text-align: left">optional</td><td style="text-align: left"><code>True</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-main"></a>main</td><td style="text-align: left">Main Ada source file containing the entry point procedure. It is compiled even if it is not listed in <code>srcs</code>. If not set, the first .adb file in srcs is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_test-subunits"></a>subunits</td><td style="text-align: left">Body files that are <code>separate</code> subunits, listed explicitly to bypass the hyphen-stem heuristic. Files listed here MUST also appear in <code>srcs</code>. They flow as inputs to their parent unit's compile but get no standalone compile action.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><!-- Generated with Stardoc: http://skydoc.bazel.build -->
 <h1 id="ada_toolchain"><a class="header" href="#ada_toolchain">ada_toolchain</a></h1>
-<h2 id="rules-6"><a class="header" href="#rules-6">Rules</a></h2>
+<h2 id="rules-10"><a class="header" href="#rules-10">Rules</a></h2>
 <ul>
 <li><a href="ada_toolchain.html#ada_toolchain">ada_toolchain</a></li>
+</ul>
+<h2 id="providers-1"><a class="header" href="#providers-1">Providers</a></h2>
+<ul>
+<li><a href="ada_toolchain.html#AdaToolchainInfo">AdaToolchainInfo</a></li>
 </ul>
 <p><a id="ada_toolchain"></a></p>
 <h2 id="ada_toolchain-1"><a class="header" href="#ada_toolchain-1">ada_toolchain</a></h2>
 <pre>
 load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
 
-ada_toolchain(<a href="ada_toolchain.html#ada_toolchain-name">name</a>, <a href="ada_toolchain.html#ada_toolchain-ada_std">ada_std</a>, <a href="ada_toolchain.html#ada_toolchain-ar">ar</a>, <a href="ada_toolchain.html#ada_toolchain-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#ada_toolchain-binder">binder</a>, <a href="ada_toolchain.html#ada_toolchain-compile_flags">compile_flags</a>, <a href="ada_toolchain.html#ada_toolchain-compiler">compiler</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_id">compiler_id</a>,
-              <a href="ada_toolchain.html#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#ada_toolchain-gcov">gcov</a>, <a href="ada_toolchain.html#ada_toolchain-link_flags">link_flags</a>, <a href="ada_toolchain.html#ada_toolchain-target_triple">target_triple</a>)
+ada_toolchain(<a href="ada_toolchain.html#ada_toolchain-name">name</a>, <a href="ada_toolchain.html#ada_toolchain-ada_std">ada_std</a>, <a href="ada_toolchain.html#ada_toolchain-ar">ar</a>, <a href="ada_toolchain.html#ada_toolchain-args">args</a>, <a href="ada_toolchain.html#ada_toolchain-artifact_name_patterns">artifact_name_patterns</a>, <a href="ada_toolchain.html#ada_toolchain-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#ada_toolchain-binder">binder</a>, <a href="ada_toolchain.html#ada_toolchain-compile_flags">compile_flags</a>,
+              <a href="ada_toolchain.html#ada_toolchain-compiler">compiler</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_id">compiler_id</a>, <a href="ada_toolchain.html#ada_toolchain-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#ada_toolchain-dynamic_runtime_lib">dynamic_runtime_lib</a>, <a href="ada_toolchain.html#ada_toolchain-enabled_features">enabled_features</a>, <a href="ada_toolchain.html#ada_toolchain-gcov">gcov</a>,
+              <a href="ada_toolchain.html#ada_toolchain-known_features">known_features</a>, <a href="ada_toolchain.html#ada_toolchain-static_runtime_lib">static_runtime_lib</a>, <a href="ada_toolchain.html#ada_toolchain-target_triple">target_triple</a>)
 </pre>
-<p>Defines an Ada toolchain providing the GNAT compiler (gcc), binder (gnatbind),
-archiver (ar), and compilation/linking flags.</p>
-<p>The toolchains shipped with <code>rules_ada</code> are created by its module extension;
-this rule is only needed to use a GNAT installation of your own.</p>
-<p><code>link_flags</code> entries that are plain relative paths (not starting with <code>-</code> or
-<code>/</code>) and <code>-L</code> directories are resolved against the toolchain repository
-root, which is taken to be the parent of the compiler's <code>bin/</code> directory.
-The GNAT runtime archives must be listed explicitly, tasking runtime first:</p>
+<p>Defines an Ada toolchain: the GNAT compiler (gcc), binder (gnatbind) and
+archiver (ar), the runtime libraries, and the arguments every action is
+built from.</p>
+<p>The hermetic-gnat toolchains shipped with <code>rules_ada</code> are created and
+registered by its module extension; this rule is only needed to define a custom
+toolchain around a GNAT installation that <code>rules_ada</code> does not ship.</p>
+<p>How the toolchain builds its command lines is declared with
+<a href="./ada_args.html"><code>ada_args</code></a> targets listed in <code>args</code>; <code>rules_ada</code> ships
+complete link lines per platform family under
+<code>@rules_ada//ada/toolchains/args/...</code> that can be reused, extended or
+replaced. The GNAT runtime archives are listed in <code>static_runtime_lib</code>,
+tasking runtime first:</p>
 <pre><code class="language-python">load("@rules_ada//ada:ada_toolchain.bzl", "ada_toolchain")
+load("@rules_ada//ada/toolchains:defs.bzl", "LINK_ACTIONS", "ada_args")
+
+ada_args(
+    name = "system_libs",
+    actions = LINK_ACTIONS,
+    args = ["-lm", "-lpthread", "-ldl", "-lrt"],
+)
 
 ada_toolchain(
     name = "gnat_toolchain",
@@ -502,28 +870,74 @@ ada_toolchain(
     compiler_lib = "@gnat//:compiler_lib",
     gcov = "@gnat//:bin/gcov",
     compile_flags = ["-O2"],
-    link_flags = [
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
-        "lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
+    static_runtime_lib = [
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a",
+        "@gnat//:lib/gcc/x86_64-pc-linux-gnu/16.1.0/libgcc.a",
     ],
+    args = [
+        "@rules_ada//ada/toolchains/args/elf:link_line",
+        ":system_libs",
+    ],
+    known_features = ["@rules_ada//ada/toolchains/features:static_libgcc"],
     target_triple = "x86_64-pc-linux-gnu",
 )
 </code></pre>
+<p>See the toolchains documentation for the variables available to <code>ada_args</code>,
+the shipped link lines, features and <code>dynamic_runtime_lib</code>.</p>
 <p><strong>ATTRIBUTES</strong></p>
 <div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th><th style="text-align: left">Type</th><th style="text-align: left">Mandatory</th><th style="text-align: left">Default</th></tr></thead><tbody>
 <tr><td style="text-align: left"><a id="ada_toolchain-name"></a>name</td><td style="text-align: left">A unique name for this target.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels#target-names">Name</a></td><td style="text-align: left">required</td><td style="text-align: left"></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-ada_std"></a>ada_std</td><td style="text-align: left">The Ada standard library (<code>adalib</code> and <code>adainclude</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-ar"></a>ar</td><td style="text-align: left">The archiver executable (<code>ar</code> or <code>gcc-ar</code>). If not set, the CC toolchain's archiver is used.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-args"></a>args</td><td style="text-align: left"><code>ada_args</code> and <code>ada_args_list</code> targets expanded, in this order, into every action they apply to. A link line is built entirely from these; see <code>@rules_ada//ada/toolchains/args/...</code> for the shipped ones.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-artifact_name_patterns"></a>artifact_name_patterns</td><td style="text-align: left">Output file name per category with <code>%{name}</code> standing for the target name. Categories: <code>executable</code> (default <code>%{name}</code>), <code>shared_library</code> (<code>lib%{name}.so</code>), <code>static_library</code> (<code>lib%{name}.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/rules/lib/core/dict">Dictionary: String -&gt; String</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>{}</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-bind_flags"></a>bind_flags</td><td style="text-align: left">Additional flags for <code>gnatbind</code>.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-binder"></a>binder</td><td style="text-align: left">The <code>gnatbind</code> executable for elaboration ordering and consistency checking.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compile_flags"></a>compile_flags</td><td style="text-align: left">Additional compiler flags for Ada compilation.</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler"></a>compiler</td><td style="text-align: left">The Ada compiler executable (gcc with GNAT support).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_id"></a>compiler_id</td><td style="text-align: left">Identifier for the Ada compiler. Currently only 'gnat' is supported.</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>"gnat"</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-compiler_lib"></a>compiler_lib</td><td style="text-align: left">GCC support files (backends, shared libs, runtime libs like <code>libgcc.a</code>, <code>libatomic.a</code>).</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-dynamic_runtime_lib"></a>dynamic_runtime_lib</td><td style="text-align: left">Shared runtime libraries the compiler driver links implicitly when the <code>static_libgcc</code> feature is disabled (e.g. macOS <code>libgcc_s.1.1.dylib</code>). They are staged next to each linked output with a relative rpath and carried in its runfiles. Leave empty where the system provides them, as on Linux.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-enabled_features"></a>enabled_features</td><td style="text-align: left"><code>ada_feature</code> targets on by default for every target using this toolchain; each must also be in <code>known_features</code>. A target turns one off with <code>features = ["-name"]</code>.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
 <tr><td style="text-align: left"><a id="ada_toolchain-gcov"></a>gcov</td><td style="text-align: left">The gcov executable for coverage support.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">Label</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>None</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-link_flags"></a>link_flags</td><td style="text-align: left">Linker flags added to every executable and (on Windows) shared library link. Relative paths and <code>-L</code> directories are resolved against the toolchain repository root; list the GNAT runtime archives here (<code>libgnarl.a</code> before <code>libgnat.a</code>, then <code>libgcc.a</code>).</td><td style="text-align: left">List of strings</td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
-<tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin23.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-known_features"></a>known_features</td><td style="text-align: left"><code>ada_feature</code> targets the toolchain understands. The arguments of enabled ones are emitted after <code>args</code>, in this order. <code>@rules_ada//ada/toolchains/features:static_libgcc</code> is the one the rules themselves know.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-static_runtime_lib"></a>static_runtime_lib</td><td style="text-align: left">Runtime archives linked, in this order, after the dependency libraries into every executable and (on Windows) shared library: <code>libgnarl.a</code> first, then <code>libgnat.a</code>, <code>libgcc.a</code>, and <code>libatomic.a</code> where needed. GNU ld scans archives once, so the order matters.</td><td style="text-align: left"><a href="https://bazel.build/concepts/labels">List of labels</a></td><td style="text-align: left">optional</td><td style="text-align: left"><code>[]</code></td></tr>
+<tr><td style="text-align: left"><a id="ada_toolchain-target_triple"></a>target_triple</td><td style="text-align: left">GCC target triple (e.g., 'aarch64-apple-darwin24.6.0', 'x86_64-pc-linux-gnu').</td><td style="text-align: left">String</td><td style="text-align: left">optional</td><td style="text-align: left"><code>""</code></td></tr>
+</tbody></table>
+</div>
+<p><a id="AdaToolchainInfo"></a></p>
+<h2 id="adatoolchaininfo"><a class="header" href="#adatoolchaininfo">AdaToolchainInfo</a></h2>
+<pre>
+load("@rules_ada//ada:ada_toolchain.bzl", "AdaToolchainInfo")
+
+AdaToolchainInfo(<a href="ada_toolchain.html#AdaToolchainInfo-ada_std">ada_std</a>, <a href="ada_toolchain.html#AdaToolchainInfo-ar">ar</a>, <a href="ada_toolchain.html#AdaToolchainInfo-args">args</a>, <a href="ada_toolchain.html#AdaToolchainInfo-args_files">args_files</a>, <a href="ada_toolchain.html#AdaToolchainInfo-artifact_name_patterns">artifact_name_patterns</a>, <a href="ada_toolchain.html#AdaToolchainInfo-bind_flags">bind_flags</a>, <a href="ada_toolchain.html#AdaToolchainInfo-binder">binder</a>,
+                 <a href="ada_toolchain.html#AdaToolchainInfo-compile_flags">compile_flags</a>, <a href="ada_toolchain.html#AdaToolchainInfo-compiler">compiler</a>, <a href="ada_toolchain.html#AdaToolchainInfo-compiler_id">compiler_id</a>, <a href="ada_toolchain.html#AdaToolchainInfo-compiler_lib">compiler_lib</a>, <a href="ada_toolchain.html#AdaToolchainInfo-dynamic_runtime_lib">dynamic_runtime_lib</a>,
+                 <a href="ada_toolchain.html#AdaToolchainInfo-enabled_features">enabled_features</a>, <a href="ada_toolchain.html#AdaToolchainInfo-gcov">gcov</a>, <a href="ada_toolchain.html#AdaToolchainInfo-known_features">known_features</a>, <a href="ada_toolchain.html#AdaToolchainInfo-label">label</a>, <a href="ada_toolchain.html#AdaToolchainInfo-process_wrapper">process_wrapper</a>, <a href="ada_toolchain.html#AdaToolchainInfo-static_runtime_lib">static_runtime_lib</a>,
+                 <a href="ada_toolchain.html#AdaToolchainInfo-target_triple">target_triple</a>)
+</pre>
+<p>Information about a configured Ada toolchain.</p>
+<p><strong>FIELDS</strong></p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Name</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-ada_std"></a>ada_std</td><td style="text-align: left">depset[File]: Ada standard library (adalib .ali and .a files, adainclude specs).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-ar"></a>ar</td><td style="text-align: left">File or None: The archiver executable. None when the GNAT archive does not include one; the CC toolchain's archiver is used as a fallback.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-args"></a>args</td><td style="text-align: left">tuple[AdaArgsInfo]: Arguments expanded into every action, in command-line order.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-args_files"></a>args_files</td><td style="text-align: left">depset[File]: Files referenced by <code>args</code>, added to every action's inputs.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-artifact_name_patterns"></a>artifact_name_patterns</td><td style="text-align: left">dict[str, str]: Output file name pattern per category (<code>executable</code>, <code>shared_library</code>, <code>static_library</code>) with <code>%{name}</code> for the target name.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-bind_flags"></a>bind_flags</td><td style="text-align: left">list[str]: Toolchain-level binder flags.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-binder"></a>binder</td><td style="text-align: left">File: The gnatbind executable for elaboration ordering.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compile_flags"></a>compile_flags</td><td style="text-align: left">list[str]: Toolchain-level compile flags.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler"></a>compiler</td><td style="text-align: left">File: The Ada compiler executable (gcc with GNAT support).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler_id"></a>compiler_id</td><td style="text-align: left">str: Compiler identifier (e.g., 'gnat').</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-compiler_lib"></a>compiler_lib</td><td style="text-align: left">depset[File]: GCC support files (backends, shared libs, runtime libs).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-dynamic_runtime_lib"></a>dynamic_runtime_lib</td><td style="text-align: left">list[File]: Shared runtime libraries staged beside each linked output when the <code>static_libgcc</code> feature is disabled (e.g. libgcc_s.1.1.dylib).</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-enabled_features"></a>enabled_features</td><td style="text-align: left">tuple[AdaFeatureInfo]: Features on by default for every target using this toolchain.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-gcov"></a>gcov</td><td style="text-align: left">File: The gcov executable for coverage, or None.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-known_features"></a>known_features</td><td style="text-align: left">tuple[AdaFeatureInfo]: Features the toolchain understands, in the order their arguments are emitted.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-label"></a>label</td><td style="text-align: left">Label: The label of the toolchain target.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-process_wrapper"></a>process_wrapper</td><td style="text-align: left">File: The process wrapper executable for build actions.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-static_runtime_lib"></a>static_runtime_lib</td><td style="text-align: left">list[File]: Runtime archives in link order (libgnarl.a, libgnat.a, libgcc.a, ...), linked into executables and Windows shared libraries after the dependency libraries.</td></tr>
+<tr><td style="text-align: left"><a id="AdaToolchainInfo-target_triple"></a>target_triple</td><td style="text-align: left">str: GCC target triple (e.g., 'aarch64-apple-darwin24.6.0', 'x86_64-pc-linux-gnu'). Informational; no rule behaviour depends on it.</td></tr>
 </tbody></table>
 </div>
                     </main>
