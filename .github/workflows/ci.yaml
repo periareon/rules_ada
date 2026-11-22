@@ -12,6 +12,11 @@ on:
 
 env:
   BAZEL_STARTUP_FLAGS: --bazelrc=${{ github.workspace }}/.github/github.bazelrc
+  # Read-only BuildBuddy key for runs that cannot see secrets (pull requests
+  # from forks, Dependabot). Set the BUILDBUDDY_READONLY_API_KEY repository
+  # variable to a key created with "Read-only key" checked, or replace the
+  # expression with the key itself. See .github/actions/buildbuddy.
+  BUILDBUDDY_READONLY_API_KEY: ${{ vars.BUILDBUDDY_READONLY_API_KEY }}
 
 jobs:
   ci:
@@ -33,6 +38,12 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
+
+      - uses: ./.github/actions/buildbuddy
+        with:
+          api_key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          readonly_api_key: ${{ env.BUILDBUDDY_READONLY_API_KEY }}
+          user: "${{ github.job }} (${{ matrix.os }})"
 
       - name: Setup Bazelrc (Windows)
         run: |
@@ -58,16 +69,19 @@ jobs:
           grep -q 'SF:.*\.adb' bazel-out/_coverage/_coverage_report.dat
         if: startswith(runner.os, 'Windows') != true
 
-  ci-examples-simple:
+  ci-examples:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-24.04
-          - os: ubuntu-24.04-arm
-          - os: windows-2022
+        example:
+          - simple
+          - ghdl
+        os:
+          - macos-latest
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - windows-2022
     steps:
       # Checkout the code
       - uses: actions/checkout@v4
@@ -75,28 +89,34 @@ jobs:
       - uses: bazel-contrib/setup-bazel@0.14.0
         with:
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
+          disk-cache: ${{ github.workflow }}-${{ matrix.example }}
           repository-cache: true
 
+      - uses: ./.github/actions/buildbuddy
+        with:
+          api_key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          readonly_api_key: ${{ env.BUILDBUDDY_READONLY_API_KEY }}
+          user: "${{ github.job }} (${{ matrix.example }}, ${{ matrix.os }})"
+
       - name: Setup Bazelrc (Windows)
-        working-directory: "${{ github.workspace }}/examples/simple"
+        working-directory: "${{ github.workspace }}/examples/${{ matrix.example }}"
         run: |
           echo "TEMP=$env:RUNNER_TEMP" >> "$env:GITHUB_ENV"
           echo "TMP=$env:RUNNER_TEMP" >> "$env:GITHUB_ENV"
           echo "startup --output_user_root=D:/bzl" > ./user.bazelrc
         if: startswith(runner.os, 'Windows')
       - name: Setup Bazelrc
-        working-directory: "${{ github.workspace }}/examples/simple"
+        working-directory: "${{ github.workspace }}/examples/${{ matrix.example }}"
         run: |
           echo "common --keep_going" >> ./user.bazelrc
 
       # Build and Test the code
       - name: Test (Unix)
-        working-directory: "${{ github.workspace }}/examples/simple"
+        working-directory: "${{ github.workspace }}/examples/${{ matrix.example }}"
         run: bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
         if: startswith(runner.os, 'Windows') != true
       - name: Test (Windows)
-        working-directory: "${{ github.workspace }}/examples/simple"
+        working-directory: "${{ github.workspace }}/examples/${{ matrix.example }}"
         run: bazel $env:BAZEL_STARTUP_FLAGS test //...
         if: startswith(runner.os, 'Windows')
 

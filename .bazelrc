@@ -40,6 +40,19 @@ build --nolegacy_external_runfiles
 build --incompatible_autoload_externally=
 
 ###############################################################################
+## Remote Cache
+###############################################################################
+
+common:remote_cache --bes_results_url=https://periareon.buildbuddy.io/invocation/
+common:remote_cache --bes_backend=grpcs://periareon.buildbuddy.io
+common:remote_cache --remote_cache=grpcs://periareon.buildbuddy.io
+common:remote_cache --remote_download_toplevel
+common:remote_cache --remote_timeout=10m
+
+common --remote_cache_compression
+common --noslim_profile
+
+###############################################################################
 ## Custom user flags
 ##
 ## This should always be the last thing in the `.bazelrc` file to ensure

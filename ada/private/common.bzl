@@ -12,14 +12,17 @@ def _toolchain_args(ada_toolchain, action, variables, extra_args = []):
     return expand_args(list(ada_toolchain.args) + extra_args, action, variables)
 
 def _new_args(actions):
-    """An Args object that spills to a params file on long command lines.
+    """An Args object that always goes to process_wrapper as a params file.
 
-    process_wrapper expands `@file` arguments (one argument per line) before
-    parsing its own flags, so the whole command line may live in the file.
-    This keeps large bind and link lines under Windows' 32K limit.
+    process_wrapper expands a lone `@file` argument (one argument per line)
+    before parsing its own flags, and in turn always hands the tool it runs a
+    response file. Using the params file unconditionally, rather than only
+    past Bazel's per-platform size estimate, means every action is invoked
+    the same way everywhere and no command line grows with the number of
+    inputs.
     """
     args = actions.args()
-    args.use_param_file("@%s", use_always = False)
+    args.use_param_file("@%s", use_always = True)
     args.set_param_file_format("multiline")
     return args
 
