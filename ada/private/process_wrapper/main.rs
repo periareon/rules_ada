@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitStatus};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const XCODE_PLACEHOLDERS: [&str; 2] = ["__BAZEL_XCODE_SDKROOT__", "__BAZEL_XCODE_DEVELOPER_DIR__"];
 
@@ -125,8 +126,16 @@ fn main() {
             Cow::Borrowed(cmd_args)
         };
         let program = &argv[0];
+        // Lives until the end of the iteration, so past the child's exit.
+        let response_file = match ResponseFile::write(&argv[1..]) {
+            Ok(rsp) => rsp,
+            Err(err) => {
+                eprintln!("error: {err}");
+                process::exit(1);
+            }
+        };
         let mut cmd = Command::new(program);
-        cmd.args(&argv[1..]);
+        cmd.arg(format!("@{}", response_file.path.display()));
         if let Some(v) = &xcode.sdkroot {
             cmd.env("SDKROOT", v);
         }
@@ -134,7 +143,7 @@ fn main() {
             cmd.env("DEVELOPER_DIR", v);
         }
         if debug {
-            eprintln!("{cmd:#?}");
+            eprintln!("{cmd:#?}\nresponse file arguments: {:#?}", &argv[1..]);
         }
 
         match cmd.status() {
@@ -221,6 +230,73 @@ fn expand_param_file(args: Vec<String>) -> Result<Vec<String>, String> {
     let bytes = fs::read(&path).map_err(|e| format!("cannot read param file {path}: {e}"))?;
     let content = String::from_utf8_lossy(&bytes);
     Ok(content.lines().map(str::to_owned).collect())
+}
+
+/// A response file carrying the arguments of the tool the wrapper runs.
+///
+/// Windows hands a child its arguments as a single string of at most 32767
+/// characters, which a library of a few hundred object files overruns. Bazel
+/// keeps its own invocation of the wrapper short with a param file, but the
+/// wrapper still has to get those arguments to the tool. Every tool it runs
+/// (gcc, gnatbind, gnatlink, ar) reads `@file` response files, so the child's
+/// arguments always travel in one. Doing it unconditionally keeps a single
+/// code path on every platform instead of one that only Windows exercises.
+struct ResponseFile {
+    path: PathBuf,
+}
+
+/// Quote one argument for a response file, but only when it needs it.
+///
+/// An argument with no whitespace, quotes or backslashes is written bare.
+/// One that has any of those is wrapped in double quotes with backslashes
+/// and double quotes escaped, which libiberty's `expandargv` (gcc, binutils)
+/// and GNAT's `System.Response_File` (gnatbind, gnatlink) both read. Bare
+/// arguments matter for the archiver on macOS: apple_support's `libtool`
+/// wrapper also takes `@file`, but reads each line verbatim, so a quoted
+/// `"-static"` would reach `libtool` as the name of an object file.
+fn quote_response_arg(arg: &str) -> String {
+    let needs_quoting = arg.is_empty()
+        || arg
+            .chars()
+            .any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '\\');
+    if !needs_quoting {
+        return arg.to_string();
+    }
+    let mut out = String::with_capacity(arg.len() + 2);
+    out.push('"');
+    for c in arg.chars() {
+        if c == '\\' || c == '"' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
+fn response_file_content(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| quote_response_arg(arg) + "\n")
+        .collect()
+}
+
+/// Writes the response file into the temporary directory; it is removed
+/// when dropped.
+impl ResponseFile {
+    fn write(args: &[String]) -> Result<Self, String> {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = env::temp_dir().join(format!("rules_ada_{}_{n}.rsp", process::id()));
+        fs::write(&path, response_file_content(args))
+            .map_err(|e| format!("cannot write response file {}: {e}", path.display()))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for ResponseFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
 }
 
 /// Strip the `--  BEGIN Object file/option list` comment block from a
@@ -607,6 +683,40 @@ G a e
             expand_param_file(strings(&[&format!("@{crlf}")])).unwrap(),
             strings(&["a", "b"])
         );
+    }
+
+    #[test]
+    fn response_file_leaves_plain_arguments_bare() {
+        let args = strings(&[
+            "-static",
+            "-o",
+            "bazel-out/darwin/bin/libm.a",
+            "_objs/m/a.o",
+        ]);
+        assert_eq!(
+            response_file_content(&args),
+            "-static\n-o\nbazel-out/darwin/bin/libm.a\n_objs/m/a.o\n"
+        );
+    }
+
+    #[test]
+    fn response_file_quotes_arguments_that_need_it() {
+        let args = strings(&["lib x.a", "C:\\dir\\a.o", "say \"hi\"", "it's", ""]);
+        assert_eq!(
+            response_file_content(&args),
+            "\"lib x.a\"\n\"C:\\\\dir\\\\a.o\"\n\"say \\\"hi\\\"\"\n\"it's\"\n\"\"\n"
+        );
+    }
+
+    #[test]
+    fn response_file_is_written_and_removed() {
+        let args = strings(&["a", "b"]);
+        let path = {
+            let rsp = ResponseFile::write(&args).unwrap();
+            assert_eq!(fs::read_to_string(&rsp.path).unwrap(), "a\nb\n");
+            rsp.path.clone()
+        };
+        assert!(!path.exists());
     }
 
     #[test]
