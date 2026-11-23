@@ -1,0 +1,20 @@
+"""Consumer example that builds GHDL (a VHDL simulator written in Ada) with rules_ada."""
+
+module(
+    name = "rules_ada_example_ghdl",
+    version = "0.0.0",
+)
+
+# `ghdl` depends on a released `rules_ada`. The override below swaps that for
+# the parent checkout so this example exercises the rules as they are in the
+# current tree, which is the point of building it in CI.
+bazel_dep(name = "rules_ada")
+local_path_override(
+    module_name = "rules_ada",
+    path = "../..",
+)
+
+bazel_dep(name = "ghdl", version = "6.0.0.bcr.5")
+
+# Needed for toolchain resolution
+bazel_dep(name = "apple_support", version = "2.5.4")

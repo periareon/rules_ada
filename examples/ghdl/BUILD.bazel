@@ -1,0 +1,11 @@
+load("@rules_ada//ada:defs.bzl", "ada_test")
+
+# Spawns the `ghdl` binary built from the BCR module and checks that it runs
+# and prints its version. This is what keeps GHDL, the largest consumer of
+# these rules, building on every platform CI covers.
+ada_test(
+    name = "ghdl_version_test",
+    srcs = ["ghdl_version_test.adb"],
+    data = ["@ghdl"],
+    deps = ["@rules_ada//ada/runfiles"],
+)
