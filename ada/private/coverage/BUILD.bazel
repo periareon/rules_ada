@@ -12,10 +12,10 @@ rust_binary(
     edition = "2021",
     visibility = ["//visibility:public"],
     deps = [
-        "@racov//:flate2",
-        "@racov//:serde",
-        "@racov//:serde_json",
-        "@racov//:walkdir",
+        "@racov//flate2",
+        "@racov//serde",
+        "@racov//serde_json",
+        "@racov//walkdir",
         "@rules_rust//rust/runfiles",
     ],
 )
